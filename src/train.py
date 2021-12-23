@@ -1,13 +1,15 @@
-import random
-
 import torch
 import torch.nn.functional as F
 from torch.utils.data import random_split, DataLoader
 from torch.cuda import amp
 
+import random
+import json
+
 from model import MyNetwork
 from data import TSDataset, collate_fn
 from utils import set_seed, AverageMeter, mse_with_mask_loss
+from evaluatation import f1_score
 
 
 def main():
@@ -20,20 +22,20 @@ def main():
     # split dataset
     train_set, val_set = random_split(dataset, [40, 10])
     # make data loaders
-    batch_size = 4
+    batch_size = 1
 
     train_loader = DataLoader(
         dataset=train_set,
         shuffle=True,
         batch_size=batch_size,
-        collate_fn=collate_fn
+        #collate_fn=collate_fn
     )
 
     val_loader = DataLoader(
         dataset=val_set,
         shuffle=True,
         batch_size=batch_size,
-        collate_fn=collate_fn
+        #collate_fn=collate_fn
     )
 
     model = MyNetwork(in_features=1024, num_class=1).cuda()
@@ -57,7 +59,7 @@ def main():
 def train(model, optimizer, scaler, loader):
     train_loss = AverageMeter()
     for i, data in enumerate(loader):
-        features, targets = data
+        features, targets, _ = data
         features = features.cuda()
         targets = targets.cuda()
         mask = (targets == 0.0)
@@ -73,7 +75,7 @@ def train(model, optimizer, scaler, loader):
         optimizer.step()
 
         # logging
-        train_loss.update(loss.item(), 4)
+        train_loss.update(loss.item(), 1)
 
         print('step %d, loss: %f' % (i + 1, loss.item()))
 
@@ -81,16 +83,21 @@ def train(model, optimizer, scaler, loader):
 
 
 def val(model, loader):
+    score_dict = {}
     test_loss = AverageMeter()
     for data in loader:
-        features, targets = data
+        features, targets, vid_name = data
         features = features.cuda()
         targets = targets.cuda()
         mask = (targets == 0.0)
 
         output = model(features, mask)
         loss = mse_with_mask_loss(output, targets, mask)
-        test_loss.update(loss.item(), 4)
+        test_loss.update(loss.item(), 1)
+
+        score_dict[vid_name[0]] = output.squeeze(0).detach().cpu().numpy()
+
+    f1_score(score_dict, 'TVSum')
 
     return test_loss.avg()
 

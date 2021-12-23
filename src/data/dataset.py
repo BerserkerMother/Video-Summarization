@@ -14,10 +14,12 @@ class TSDataset(Dataset):
 
         self.data = []
         self.target = []
+        self.name = []
         with h5py.File(root, 'r') as file:
             for key in file.keys():
                 self.data.append(file[key]['features'][...].astype(np.float32))
                 self.target.append(file[key]['gtscore'][...].astype(np.float32))
+                self.name.append(key)
 
     def __len__(self):
         return len(self.data)
@@ -25,14 +27,15 @@ class TSDataset(Dataset):
     def __getitem__(self, idx):
         features = torch.tensor(self.data[idx])
         targets = torch.tensor(self.target[idx])
+        vid_name = self.name[idx]
 
-        return features, targets
+        return features, targets, vid_name
 
 
 def collate_fn(batch):
-    features, targets = zip(*batch)
+    features, targets, name = zip(*batch)
 
     features = pad_sequence(features, batch_first=True)
     targets = pad_sequence(targets, batch_first=True)
 
-    return features, targets
+    return features, targets, name
