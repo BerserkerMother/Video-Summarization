@@ -33,4 +33,3 @@ def mse_with_mask_loss(output, targets, mask):
     loss = 0.5 * ((output - targets) ** 2)
 
     return loss.sum()
-

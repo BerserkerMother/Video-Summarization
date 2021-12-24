@@ -7,18 +7,19 @@ from .generate_summary import generate_summary
 import argparse
 
 # arguments to run the script
- #parser = argparse.ArgumentParser()
- #parser.add_argument("--path", type=str,
-             #       default='../PGL-SUM/Summaries/PGL-SUM/exp1/SumMe/results/split0',
-                 #   help="Path to the json files with the scores of the frames for each epoch")
- #parser.add_argument("--dataset", type=str, default='SumMe', help="Dataset to be used")
- #parser.add_argument("--eval", type=str, default="max", help="Eval method to be used for f_score reduction (max or avg)")
+#parser = argparse.ArgumentParser()
+# parser.add_argument("--path", type=str,
+#       default='../PGL-SUM/Summaries/PGL-SUM/exp1/SumMe/results/split0',
+#   help="Path to the json files with the scores of the frames for each epoch")
+#parser.add_argument("--dataset", type=str, default='SumMe', help="Dataset to be used")
+#parser.add_argument("--eval", type=str, default="max", help="Eval method to be used for f_score reduction (max or avg)")
 
 
-def f1_score(data, dataset):
+def f1_score(data, dataset, root):
     eval_method = 'avg'
+    dataset_path = root
 
-    dataset_path =  '/home/kave/PycharmProjects/Video-Summarization/data/eccv16_dataset_tvsum_google_pool5.h5'
+    # dataset_path = '/home/kave/PycharmProjects/Video-Summarization/data/eccv16_dataset_tvsum_google_pool5.h5'
 
     all_scores = []
     keys = list(data.keys())
@@ -32,7 +33,8 @@ def f1_score(data, dataset):
         for video_name in keys:
             video_index = video_name[6:]
 
-            user_summary = np.array(hdf.get('video_' + video_index + '/user_summary'))
+            user_summary = np.array(
+                hdf.get('video_' + video_index + '/user_summary'))
             sb = np.array(hdf.get('video_' + video_index + '/change_points'))
             n_frames = np.array(hdf.get('video_' + video_index + '/n_frames'))
             positions = np.array(hdf.get('video_' + video_index + '/picks'))
@@ -42,7 +44,8 @@ def f1_score(data, dataset):
             all_nframes.append(n_frames)
             all_positions.append(positions)
 
-    all_summaries = generate_summary(all_shot_bound, all_scores, all_nframes, all_positions)
+    all_summaries = generate_summary(
+        all_shot_bound, all_scores, all_nframes, all_positions)
 
     all_f_scores = []
     # compare the resulting summary with the ground truth one, for each video
@@ -53,3 +56,4 @@ def f1_score(data, dataset):
         all_f_scores.append(f_score)
 
     print("f_score: ", np.mean(all_f_scores))
+    return np.mean(all_f_scores)

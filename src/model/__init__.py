@@ -1,1 +1,2 @@
-from .model import MyNetwork
+from .EncoderOnly import *
+from .Seq2Seq import *
