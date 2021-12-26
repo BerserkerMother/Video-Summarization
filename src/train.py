@@ -1,10 +1,10 @@
 import torch
-import torch.nn.functional as F
 from torch.utils.data import random_split, DataLoader
 from torch.cuda import amp
 
-import random
-import json
+import logging
+import argparse
+import wandb
 
 from model import MyNetwork
 from data import TSDataset, collate_fn
@@ -12,48 +12,50 @@ from utils import set_seed, AverageMeter, mse_with_mask_loss
 from evaluatation import f1_score
 
 
-def main():
+def main(args):
     # set seed for experimenting
-    seed = 9423
-    set_seed(seed)
-
+    set_seed(args.seed)
     # dataset
-    dataset = TSDataset('../data/eccv16_dataset_tvsum_google_pool5.h5')
+    dataset = TSDataset(args.data)
     # split dataset
     train_set, val_set = random_split(dataset, [40, 10])
     # make data loaders
-    batch_size = 1
 
     train_loader = DataLoader(
         dataset=train_set,
         shuffle=True,
-        batch_size=batch_size,
-        #collate_fn=collate_fn
+        batch_size=args.batch_size,
     )
 
     val_loader = DataLoader(
         dataset=val_set,
         shuffle=True,
-        batch_size=batch_size,
-        #collate_fn=collate_fn
+        batch_size=args.batch_size,
     )
 
-    model = MyNetwork(in_features=1024, num_class=1).cuda()
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    model = MyNetwork(in_features=args.in_features, num_class=1).cuda()
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     scaler = amp.GradScaler()
 
     train_loss = train(model, optimizer, scaler, train_loader)
     val_loss = val(model, val_loader)
-    print('random weight network: Train Loss: %f, Val Loss: %f\n\n' % (train_loss, val_loss))
+    logging.info('random weight network: Train Loss: %f, Val Loss: %f\n\n' % (train_loss, val_loss))
 
-    print('Starting Training')
+    logging.info('Starting Training')
     epochs = 25
     for epoch in range(epochs):
         train_loss = train(model, optimizer, scaler, train_loader)
         val_loss = val(model, val_loader)
-
-        print('Epoch %2d\nTrain Loss: %3.4f, Val Loss: %3.4f' % (epoch + 1, train_loss, val_loss))
-        print('_' * 50)
+        # logging
+        logging.info('Epoch %2d\nTrain Loss: %3.4f, Val Loss: %3.4f' % (epoch + 1, train_loss, val_loss))
+        wandb.log(
+            {
+                'loss': {
+                    'train': train_loss,
+                    'val': val_loss
+                }
+            }
+        )
 
 
 def train(model, optimizer, scaler, loader):
@@ -63,21 +65,19 @@ def train(model, optimizer, scaler, loader):
         features = features.cuda()
         targets = targets.cuda()
         mask = (targets == 0.0)
-
-        # forward pass
-
-        logits = model(features, mask)
-        loss = mse_with_mask_loss(logits, targets, mask)
-
+        with amp.autocast():
+            # forward pass
+            logits = model(features, mask)
+            loss = mse_with_mask_loss(logits, targets, mask)
         # optimization step
         optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
+        scaler.scale(loss).backward()
+        scaler.step(optimizer)
+        scaler.update()
         # logging
         train_loss.update(loss.item(), 1)
 
-        print('step %d, loss: %f' % (i + 1, loss.item()))
+        logging.info('step %d, loss: %f' % (i + 1, loss.item()))
 
     return train_loss.avg()
 
@@ -97,10 +97,34 @@ def val(model, loader):
 
         score_dict[vid_name[0]] = output.squeeze(0).detach().cpu().numpy()
 
-    f1_score(score_dict, 'TVSum')
+    f_score = f1_score(score_dict, 'TVSum')
+    wandb.log(
+        {
+            'F Score': f_score
+        }
+    )
 
     return test_loss.avg()
 
 
-
-main()
+# arguments
+arg_parser = argparse.ArgumentParser(description='Video Summarization with Deep Learning')
+# data
+arg_parser.add_argument('--data', required=True, type=str, help='path to data folder')
+arg_parser.add_argument('--batch_size', default=1, help='batch size')
+# model
+arg_parser.add_argument('--in_features', type=int, default=1024, help='frame features dimension')
+# optimizer
+arg_parser.add_argument('--lr', type=float, default=1e-4, help='learning rate value')
+# others
+arg_parser.add_argument('--seed', type=int, default=234, help='experiment seed')
+arg_parser.add_argument('--name', type=str, required=True, help='wandb experiment name')
+arguments = arg_parser.parse_args()
+# wandb logger
+wandb.init(project='Video-Summarization', entity='berserkermother', name=arguments.name, config=arguments)
+# formatting logger
+logging.basicConfig(
+    format='[%(levelname)s] %(module)s - %(message)s',
+    level=logging.DEBUG
+)
+main(arguments)

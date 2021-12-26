@@ -1,5 +1,7 @@
-/data
+/data/
 .idea
+**/wandb/
 
 **__pycache__
 **.json
+**.log

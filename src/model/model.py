@@ -12,16 +12,17 @@ from .utils import process_mask
 
 class MyNetwork(nn.Module):
     def __init__(self, in_features, num_class=5, d_model=256, attention_dim=256,
-                 scale=2, num_heads=4, num_layer=3, dropout=0.2):
+                 scale=2, num_heads=4, num_layer=3, dropout=0.2, use_pos=True):
         super(MyNetwork, self).__init__()
 
         self.d_model = d_model
         self.num_class = num_class
         self.num_layer = num_layer
         self.num_heads = num_heads
-
         self.feature_embedding = nn.Linear(in_features, d_model)
-
+        self.use_pos = use_pos
+        if use_pos:
+            self.pos_encoding = PositionalEncoding(emb_size=d_model, dropout=dropout)
         encoder_layer = []
         for _ in range(num_layer):
             encoder_layer.append(TransformerEncoderLayer(d_model, attention_dim, scale, num_heads, dropout))
@@ -31,13 +32,15 @@ class MyNetwork(nn.Module):
 
     def forward(self, x, mask):
         x = self.feature_embedding(x)
+        if self.use_pos:
+            x = self.pos_encoding(x)
         mask = process_mask(mask, self.num_heads)
         for module in self.encoder_layer:
             x = module(x, mask)
 
         x = self.decoder(x)
-        # logits = torch.sigmoid(x)
-        return x
+        logits = torch.sigmoid(x)
+        return logits
 
 
 class TransformerEncoderLayer(nn.Module):
@@ -130,7 +133,7 @@ class PositionalEncoding(nn.Module):
     def __init__(self,
                  emb_size: int,
                  dropout: float,
-                 maxlen: int = 5000):
+                 maxlen: int = 2500):
         super(PositionalEncoding, self).__init__()
 
         angle = torch.exp(- torch.arange(0, emb_size, 2)

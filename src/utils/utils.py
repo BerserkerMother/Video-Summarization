@@ -9,7 +9,6 @@ def set_seed(seed: int):
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-
 class AverageMeter:
     def __init__(self):
         self.sum = 0.

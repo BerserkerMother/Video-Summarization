@@ -1,29 +1,20 @@
-from os import listdir
-import json
+import logging
 import numpy as np
 import h5py
+
 from .evaluation_metrics import evaluate_summary
 from .generate_summary import generate_summary
-import argparse
-
-# arguments to run the script
- #parser = argparse.ArgumentParser()
- #parser.add_argument("--path", type=str,
-             #       default='../PGL-SUM/Summaries/PGL-SUM/exp1/SumMe/results/split0',
-                 #   help="Path to the json files with the scores of the frames for each epoch")
- #parser.add_argument("--dataset", type=str, default='SumMe', help="Dataset to be used")
- #parser.add_argument("--eval", type=str, default="max", help="Eval method to be used for f_score reduction (max or avg)")
 
 
 def f1_score(data, dataset):
     eval_method = 'avg'
 
-    dataset_path =  '/home/kave/PycharmProjects/Video-Summarization/data/eccv16_dataset_tvsum_google_pool5.h5'
+    dataset_path = '/home/kave/PycharmProjects/Video-Summarization/data/eccv16_dataset_tvsum_google_pool5.h5'
 
     all_scores = []
     keys = list(data.keys())
 
-    for video_name in keys:             # for each video inside that json file ...
+    for video_name in keys:  # for each video inside that json file ...
         scores = data[video_name]  # read the importance scores from frames
         all_scores.append(scores)
 
@@ -52,4 +43,5 @@ def f1_score(data, dataset):
         f_score = evaluate_summary(summary, user_summary, eval_method)
         all_f_scores.append(f_score)
 
-    print("f_score: ", np.mean(all_f_scores))
+    logging.info("f_score: %s" % np.mean(all_f_scores))
+    return np.mean(all_f_scores)
