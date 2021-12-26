@@ -142,7 +142,7 @@ class PositionalEncoding(nn.Module):
         pos_embedding = torch.zeros((maxlen, emb_size))
         pos_embedding[:, 0::2] = torch.sin(pos * angle)
         pos_embedding[:, 1::2] = torch.cos(pos * angle)
-        pos_embedding = pos_embedding.unsqueeze(-2)
+        pos_embedding = pos_embedding.unsqueeze(0)
 
         self.dropout = nn.Dropout(dropout)
         self.register_buffer('pos_embedding', pos_embedding)
