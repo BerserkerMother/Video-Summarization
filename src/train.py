@@ -39,6 +39,9 @@ def main(args):
         model = MyNetwork(d_model=args.d_model, num_heads=args.num_heads, num_layer=args.num_layers,
                           attention_dim=args.attention_dim, dropout=args.dropout, in_features=args.in_features,
                           num_class=1, use_pos=args.use_pos).cuda()
+        # count network parameters
+        num_params = sum(module.numel() for module in model.parameters() if module.requires_grad is True) // 1000000
+        logging.info('number of parameters: %dM' % num_params)
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         scaler = amp.GradScaler()
         train_loss = train(model, optimizer, scaler, train_loader)
@@ -66,6 +69,7 @@ def main(args):
 
 
 def train(model, optimizer, scaler, loader):
+    model.train()
     train_loss = AverageMeter()
     for i, data in enumerate(loader):
         features, targets, _ = data
@@ -90,6 +94,7 @@ def train(model, optimizer, scaler, loader):
 
 
 def val(model, loader, args):
+    model.eval()
     score_dict = {}
     test_loss = AverageMeter()
     for data in loader:
@@ -137,7 +142,7 @@ arg_parser.add_argument('--save', type=str, default='', help='path to save direc
 arguments = arg_parser.parse_args()
 logging.basicConfig(
     format='[%(levelname)s] %(module)s - %(message)s',
-    level=logging.DEBUG
+    level=logging.INFO
 )
 
 if __name__ == '__main__':
