@@ -2,20 +2,23 @@ import torch
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
 
+import os
 import numpy as np
 import h5py
+
+from .path import PATH
 
 
 # Dataset Implementation for DS-net TVsum & SumMe
 
 class TSDataset(Dataset):
-    def __init__(self, root):
+    def __init__(self, root, dataset='tvsum'):
         self.root = root
-
+        self.dataset = dataset
         self.data = []
         self.target = []
         self.name = []
-        with h5py.File(root, 'r') as file:
+        with h5py.File(os.path.join(root, PATH[dataset]), 'r') as file:
             for key in file.keys():
                 self.data.append(file[key]['features'][...].astype(np.float32))
                 self.target.append(file[key]['gtscore'][...].astype(np.float32))

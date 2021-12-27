@@ -11,8 +11,8 @@ from .utils import process_mask
 # Simple transformer network
 
 class MyNetwork(nn.Module):
-    def __init__(self, in_features, num_class=5, d_model=256, attention_dim=256,
-                 scale=2, num_heads=4, num_layer=3, dropout=0.2, use_pos=True):
+    def __init__(self, in_features, num_class=1, d_model=256, attention_dim=256,
+                 scale=4, num_heads=4, num_layer=3, dropout=0.2, use_pos=True):
         super(MyNetwork, self).__init__()
 
         self.d_model = d_model
