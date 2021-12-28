@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 from torch.utils.data import random_split, DataLoader
 from torch.cuda import amp
 
@@ -75,11 +76,10 @@ def train(model, optimizer, scaler, loader):
         features, targets, _ = data
         features = features.cuda()
         targets = targets.cuda()
-        mask = (targets == 0.0)
         with amp.autocast():
             # forward pass
-            logits = model(features, mask)
-            loss = mse_with_mask_loss(logits, targets, mask)
+            logits = model(features)
+            loss = F.mse_loss(logits, targets)
         # optimization step
         optimizer.zero_grad()
         scaler.scale(loss).backward()
@@ -101,10 +101,9 @@ def val(model, loader, args):
         features, targets, vid_name = data
         features = features.cuda()
         targets = targets.cuda()
-        mask = (targets == 0.0)
 
-        output = model(features, mask)
-        loss = mse_with_mask_loss(output, targets, mask)
+        output = model(features)
+        loss = F.mse_loss(output, targets)
         test_loss.update(loss.item(), 1)
 
         score_dict[vid_name[0]] = output.squeeze(0).detach().cpu().numpy()

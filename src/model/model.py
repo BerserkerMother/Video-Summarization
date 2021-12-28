@@ -5,8 +5,6 @@ from torch import Tensor
 
 import math
 
-from .utils import process_mask
-
 
 # Simple transformer network
 
@@ -30,13 +28,12 @@ class MyNetwork(nn.Module):
 
         self.decoder = nn.Linear(d_model, num_class)
 
-    def forward(self, x, mask):
+    def forward(self, x):
         x = self.feature_embedding(x)
         if self.use_pos:
             x = self.pos_encoding(x)
-        mask = process_mask(mask, self.num_heads)
         for module in self.encoder_layer:
-            x = module(x, mask)
+            x = module(x)
 
         x = self.decoder(x)
         logits = torch.sigmoid(x)
@@ -61,9 +58,9 @@ class TransformerEncoderLayer(nn.Module):
         self.dropout1 = nn.Dropout(p=dropout)
         self.dropout2 = nn.Dropout(p=dropout)
 
-    def forward(self, x, mask):
+    def forward(self, x):
         # self attention
-        x = self.dropout1(self.self_attention(self.norm1(x), mask)) + x
+        x = self.dropout1(self.self_attention(self.norm1(x))) + x
         # mlp
         x = self.dropout2(self.mlp(self.norm2(x))) + x
 
@@ -88,26 +85,21 @@ class SelfAttentionNetwork(nn.Module):
         self.feature_projection = nn.Linear(attention_dim, d_model)
         self.dropout = nn.Dropout(p=dropout)
 
-    def forward(self, x, mask):
+    def forward(self, x):
         """
 
         :param x: input dimension (batch_size, N, d_model)
         :return:
         """
         batch_size, N, _ = x.size()
-
         q = self.q(x).view(batch_size, N, self.num_heads, -1).permute(0, 2, 1, 3)
         k = self.k(x).view(batch_size, N, self.num_heads, -1).permute(0, 2, 1, 3)
         v = self.v(x).view(batch_size, N, self.num_heads, -1).permute(0, 2, 1, 3)
-
         attention_score = torch.matmul(q, k.transpose(2, 3)) * self.scale
-        attention_score.masked_fill_(mask, float('-inf'))
         attention_weight = F.softmax(attention_score, dim=3)
         attention_weight = self.dropout(attention_weight)
-
         attention_output = torch.matmul(attention_weight, v).permute(0, 2, 1, 3).contiguous().view(batch_size, N, -1)
         attention_output = self.feature_projection(attention_output)
-
         return attention_output
 
 
