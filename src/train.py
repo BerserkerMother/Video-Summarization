@@ -9,19 +9,18 @@ import wandb
 
 from model import MyNetwork
 from data import TSDataset, collate_fn
-from utils import set_seed, AverageMeter, mse_with_mask_loss
+from utils import set_seed, AverageMeter
 from evaluatation import f1_score
 
 
 def main(args):
     for seed_num, seed in enumerate(args.seeds):
-        # wandb logger
-        wandb.init(project='Video-Summarization', entity='berserkermother', name=arguments.name, config=args,
-                   reinit=True)
-        # formatting logger
         logging.info('Experiment %d | seed number %d' % (seed_num + 1, seed))
         # set seed for experimenting
         set_seed(seed)
+        # wandb logger
+        wandb.init(project='Video-Summarization', entity='berserkermother', name=arguments.name, config=args,
+                   reinit=True)
         # dataset
         dataset = TSDataset(args.data)
         # split dataset
@@ -40,14 +39,12 @@ def main(args):
         model = MyNetwork(d_model=args.d_model, num_heads=args.num_heads, num_layer=args.num_layers,
                           attention_dim=args.attention_dim, dropout=args.dropout, in_features=args.in_features,
                           num_class=1, use_pos=args.use_pos).cuda()
-        # count network parameters
-        num_params = sum(module.numel() for module in model.parameters() if module.requires_grad is True) // 1000000
-        logging.info('number of parameters: %dM' % num_params)
+        num_el = sum(module.numel() for module in model.parameters() if module.requires_grad) // 1000000
+        logging.info('number of model parameter %d' % num_el)
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         scaler = amp.GradScaler()
-        train_loss = train(model, optimizer, scaler, train_loader)
         val_loss, f_score = val(model, val_loader, args)
-        logging.info('random weight network: Train Loss: %f, Val Loss: %f\n\n' % (train_loss, val_loss))
+        logging.info('random weight network: Val Loss: %f\n\n' % val_loss)
         logging.info('Starting Training')
         for epoch in range(args.epochs):
             train_loss = train(model, optimizer, scaler, train_loader)
@@ -70,7 +67,6 @@ def main(args):
 
 
 def train(model, optimizer, scaler, loader):
-    model.train()
     train_loss = AverageMeter()
     for i, data in enumerate(loader):
         features, targets, _ = data
@@ -79,7 +75,7 @@ def train(model, optimizer, scaler, loader):
         with amp.autocast():
             # forward pass
             logits = model(features)
-            loss = F.mse_loss(logits, targets)
+            loss = F.mse_loss(logits, targets, reduction='sum')
         # optimization step
         optimizer.zero_grad()
         scaler.scale(loss).backward()
@@ -94,7 +90,6 @@ def train(model, optimizer, scaler, loader):
 
 
 def val(model, loader, args):
-    model.eval()
     score_dict = {}
     test_loss = AverageMeter()
     for data in loader:
@@ -103,7 +98,7 @@ def val(model, loader, args):
         targets = targets.cuda()
 
         output = model(features)
-        loss = F.mse_loss(output, targets)
+        loss = F.mse_loss(output, targets, reduction='sum')
         test_loss.update(loss.item(), 1)
 
         score_dict[vid_name[0]] = output.squeeze(0).detach().cpu().numpy()
@@ -141,7 +136,7 @@ arg_parser.add_argument('--save', type=str, default='', help='path to save direc
 arguments = arg_parser.parse_args()
 logging.basicConfig(
     format='[%(levelname)s] %(module)s - %(message)s',
-    level=logging.INFO
+    level=logging.DEBUG
 )
 
 if __name__ == '__main__':
