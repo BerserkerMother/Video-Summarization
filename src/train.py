@@ -1,10 +1,10 @@
+import logging
+import argparse
+
 import torch
 import torch.nn.functional as F
 from torch.utils.data import random_split, DataLoader
 from torch.cuda import amp
-
-import logging
-import argparse
 import wandb
 
 from model import MyNetwork
@@ -36,57 +36,69 @@ def main(args):
             shuffle=True,
             batch_size=args.batch_size,
         )
-        model = MyNetwork(d_model=args.d_model, num_heads=args.num_heads, num_layer=args.num_layers,
-                          attention_dim=args.attention_dim, dropout=args.dropout, in_features=args.in_features,
+        model = MyNetwork(d_model=args.d_model, num_heads=args.num_heads,
+                          num_layer=args.num_layers,
+                          attention_dim=args.attention_dim,
+                          dropout=args.dropout, in_features=args.in_features,
                           num_class=1, use_pos=args.use_pos).cuda()
         num_el = sum(module.numel() for module in model.parameters() if module.requires_grad) // 1000000
-        logging.info('number of model parameter %d' % num_el)
+        logging.info('number of model parameter %dM' % num_el)
+
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         scaler = amp.GradScaler()
-        val_loss, f_score = val(model, val_loader, args)
+
+        val_loss, f_score_val = val(model, val_loader, args)
         logging.info('random weight network: Val Loss: %f\n\n' % val_loss)
         logging.info('Starting Training')
         for epoch in range(args.epochs):
-            train_loss = train(model, optimizer, scaler, train_loader)
-            val_loss, f_score = val(model, val_loader, args)
+            train_loss, f_score_train = train(model, optimizer, scaler, train_loader, args)
+            val_loss, f_score_val = val(model, val_loader, args)
             # logging
-            logging.info('Epoch %2d\nTrain Loss: %3.4f, Val Loss: %3.4f' % (epoch + 1, train_loss, val_loss))
+            logging.info('Epoch %2d\nTrain Loss: %3.4f, Val Loss: %3.4f, Train F Score: %f, Val F Score: %f' % (
+                epoch + 1, train_loss, val_loss, f_score_train, f_score_val))
             wandb.log(
                 {
-                    ('seed%d' % seed):
+                    'seed%d' % seed:
                         {
                             'loss': {
                                 'train': train_loss,
                                 'val': val_loss
                             },
-                            'F Score': f_score
+                            'F Score': {
+                                'train': f_score_train,
+                                'val': f_score_val
+                            }
                         }
                 }
             )
         wandb.finish()
 
 
-def train(model, optimizer, scaler, loader):
+def train(model, optimizer, scaler, loader, args):
+    score_dict = {}
     train_loss = AverageMeter()
     for i, data in enumerate(loader):
-        features, targets, _ = data
+        features, targets, vid_name = data
         features = features.cuda()
         targets = targets.cuda()
+
         with amp.autocast():
             # forward pass
             logits = model(features)
             loss = F.mse_loss(logits, targets, reduction='sum')
+
         # optimization step
         optimizer.zero_grad()
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
+
         # logging
+        score_dict[vid_name[0]] = logits.squeeze(0).detach().cpu().numpy()
         train_loss.update(loss.item(), 1)
-
         logging.info('step %d, loss: %f' % (i + 1, loss.item()))
-
-    return train_loss.avg()
+    f_score = f1_score(score_dict, args)
+    return train_loss.avg(), f_score
 
 
 def val(model, loader, args):
@@ -99,12 +111,10 @@ def val(model, loader, args):
 
         output = model(features)
         loss = F.mse_loss(output, targets, reduction='sum')
-        test_loss.update(loss.item(), 1)
 
         score_dict[vid_name[0]] = output.squeeze(0).detach().cpu().numpy()
-
+        test_loss.update(loss.item(), 1)
     f_score = f1_score(score_dict, args)
-
     return test_loss.avg(), f_score
 
 
@@ -136,7 +146,7 @@ arg_parser.add_argument('--save', type=str, default='', help='path to save direc
 arguments = arg_parser.parse_args()
 logging.basicConfig(
     format='[%(levelname)s] %(module)s - %(message)s',
-    level=logging.DEBUG
+    level=logging.INFO
 )
 
 if __name__ == '__main__':

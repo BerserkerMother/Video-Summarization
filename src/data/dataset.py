@@ -1,10 +1,10 @@
+import numpy as np
+import h5py
+import os
+
 import torch
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
-
-import os
-import numpy as np
-import h5py
 
 from .path import PATH
 
@@ -31,14 +31,11 @@ class TSDataset(Dataset):
         features = torch.tensor(self.data[idx])
         targets = torch.tensor(self.target[idx])
         vid_name = self.name[idx]
-
         return features, targets, vid_name
 
 
 def collate_fn(batch):
     features, targets, name = zip(*batch)
-
     features = pad_sequence(features, batch_first=True)
     targets = pad_sequence(targets, batch_first=True)
-
     return features, targets, name
