@@ -10,22 +10,23 @@ from torch import Tensor
 
 class MyNetwork(nn.Module):
     def __init__(self, in_features, num_class=1, d_model=256,
-                 attention_dim=256, scale=4, num_heads=4,
-                 num_layer=3, dropout=0.2, use_pos=True):
+                 attention_dim=256, scale=4, num_heads=4, num_layer=3,
+                 dropout=0.2, sparsity=0.7,
+                 use_pos: bool = True,
+                 use_cls: bool = True):
         super(MyNetwork, self).__init__()
         # module parameters
         self.d_model = d_model
         self.num_class = num_class
         self.num_layer = num_layer
         self.num_heads = num_heads
-        self.feature_embedding = nn.Linear(in_features, d_model)
         self.use_pos = use_pos
 
         # module layers
-        # positional embedding
-        if use_pos:
-            self.pos_encoding = PositionalEncoding(emb_size=d_model,
-                                                   dropout=dropout)
+        # embedding layer
+        self.embedding = Embedding(in_features=in_features, d_model=d_model,
+                                   sparsity=sparsity, use_pos=use_pos,
+                                   use_cls=use_cls)
 
         # encoder layers
         encoder_layer = []
@@ -42,20 +43,37 @@ class MyNetwork(nn.Module):
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
 
-    def forward(self, x):
+    def forward(self, x, mask=None):
         batch_size = x.size()[0]
 
-        x = self.feature_embedding(x)
-        if self.use_pos:
-            x = self.pos_encoding(x)
-
+        if isinstance(mask, Tensor):
+            mask = self.process_mask(mask)
+        x = self.embedding(x)
         for module in self.encoder_layer:
-            x = module(x)
+            x = module(x, mask)
 
         x = self.dropout(F.relu(self.fc1(self.norm1(x))))
-        x = self.fc2(self.norm2(x))
-        logits = torch.sigmoid(x).view(batch_size, -1)
+        logits = self.fc2(self.norm2(x))
         return logits
+
+    def process_mask(self, mask: Tensor, use_cls: bool = True):
+        """
+
+        :param mask: bool mask if size (batch_size, N)
+        :param use_cls: true if using a cls token
+        :return: shaped mask of size (batch_size, num_heads, N, N)
+        N+1 if using cls token
+        """
+        batch_size = mask.size()[0]
+
+        if use_cls:
+            cls_mask = torch.zeros((batch_size, 1), device=torch.device("cuda"))
+            mask = torch.cat([cls_mask, mask], dim=1)
+
+        N = mask.size()[1]
+        mask = mask.view(batch_size, 1, 1, N)
+        mask = mask.expand(batch_size, self.num_heads, N, N).type(torch.bool)
+        return mask
 
 
 class TransformerEncoderLayer(nn.Module):
@@ -79,9 +97,9 @@ class TransformerEncoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
         self.dropout2 = nn.Dropout(p=dropout)
 
-    def forward(self, x):
+    def forward(self, x, mask):
         # self attention
-        x = self.dropout1(self.self_attention(self.norm1(x))) + x
+        x = self.dropout1(self.self_attention(self.norm1(x), mask)) + x
 
         # mlp
         x = self.dropout2(self.mlp(self.norm2(x))) + x
@@ -109,7 +127,7 @@ class SelfAttentionNetwork(nn.Module):
         # self attention projection layer
         self.feature_projection = nn.Linear(attention_dim, d_model)
 
-    def forward(self, x):
+    def forward(self, x, mask):
         """
 
         :param x: input dimension (batch_size, N, d_model)
@@ -125,6 +143,8 @@ class SelfAttentionNetwork(nn.Module):
             .permute(0, 2, 1, 3)
 
         attention_score = torch.matmul(q, k.transpose(2, 3)) * self.scale
+        if isinstance(mask, Tensor):
+            attention_score = attention_score.masked_fill(mask, float("-inf"))
         attention_weight = F.softmax(attention_score, dim=3)
         attention_weight = self.dropout(attention_weight)
         attention_output = torch.matmul(attention_weight, v). \
@@ -149,6 +169,40 @@ class MLP(nn.Module):
     def forward(self, x):
         x = self.dropout(F.relu(self.fc1(x)))
         x = self.fc2(x)
+        return x
+
+
+class Embedding(nn.Module):
+    def __init__(self, in_features, d_model: int = 512,
+                 max_len: int = 2500, sparsity: float = 0.7,
+                 use_cls: bool = False, use_pos: bool = True):
+        super(Embedding, self).__init__()
+        # model info
+        self.in_features = in_features
+        self.d_model = d_model
+        self.max_len = max_len
+        self.use_cls = use_cls
+        self.use_pos = use_pos
+
+        # model layers
+        self.feature_transform = nn.Linear(in_features, d_model)
+        if use_pos:
+            self.positional_encoding = PositionalEncoding(emb_size=d_model,
+                                                          maxlen=max_len,
+                                                          dropout=sparsity)
+        # cls token
+        if use_cls:
+            self.cls_token = nn.Parameter(torch.zeros((1, 1, d_model)))
+
+    def forward(self, x: Tensor):
+        batch_size = x.size()[0]
+
+        x = self.feature_transform(x)
+        if self.use_pos:
+            x = self.positional_encoding(x)
+        if self.use_cls:
+            cls_token = self.cls_token.expand((batch_size, 1, self.d_model))
+            x = torch.cat([cls_token, x], dim=1)
         return x
 
 

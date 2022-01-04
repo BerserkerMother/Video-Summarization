@@ -35,7 +35,6 @@ class TSDataset(Dataset):
 
 
 def collate_fn(batch):
-    features, targets, name = zip(*batch)
-    features = pad_sequence(features, batch_first=True)
-    targets = pad_sequence(targets, batch_first=True)
-    return features, targets, name
+    features, _, _ = zip(*batch)
+    features = pad_sequence(features, batch_first=True, padding_value=-1)
+    return features
