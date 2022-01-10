@@ -12,6 +12,7 @@ from data import TSDataset, collate_fn
 from utils import set_seed, AverageMeter
 from evaluatation import f1_score
 
+# TODO: add number of workers to dataloaders
 
 def main(args):
     for seed_num, seed in enumerate(args.seeds):
