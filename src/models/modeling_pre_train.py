@@ -187,7 +187,7 @@ class PositionalEncoding(nn.Module):
         i = torch.arange(d_model, device=device)
         self.d_model = d_model
         # for each dimension of d_model compute angle
-        angle = 10000 ** (2*(i//2) / self.d_model)
+        angle = 10000 ** (2*(i/2) / self.d_model)
         self.encoding = pos / angle
 
         # sin for even dims: 2i

@@ -4,7 +4,7 @@ import time
 import numpy as np
 import torch
 from torch.optim import Adam, AdamW
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 import argparse
 
 from utils import AverageMeter
@@ -83,7 +83,7 @@ def pre_train(model, optim, pr_t_data_loader, pr_t_max_epoch, device):
     return model
 
 
-args = argparse.ArgumentParser('MAE Pre-training')
+args = argparse.ArgumentParser('MAE Pretraining')
 args.add_argument('--heads', default=4, type=int)
 args.add_argument('--d_enc', default=512, type=int)
 args.add_argument('--d_dec', default=128, type=int)

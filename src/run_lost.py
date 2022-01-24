@@ -2,36 +2,32 @@ import yaml
 import time
 import argparse
 
-import numpy as np
 import torch
 from torch.optim import Adam, AdamW
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
+from models import TLOST
 
 from utils import AverageMeter
-from models import EncoderOnly, MAE, NewModel
-from evaluatation import f1_score
+from evaluation.compute_metrics import eval_metrics
 from dataset import TSDataset
-
-
-MODE = ['freeze', 'non-freeze']
-PHASE = ['pre-train', 'fine-tune']
 
 
 def main(args, splits):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # pre_trained_model = MAE(args.heads, args.d_enc, args.d_dec,
-    #                         args.enc_layers, args.dec_layers, max_len=10000, device=device)
-    # pre_trained_model.load_state_dict(
-    #     torch.load('../pretrain.pth')['model_state'])
-
-    print('Start fine-tuning...')
+    print('Start Training...')
     avg_fscore = AverageMeter()
+    avg_ktau = AverageMeter()
+    avg_spr = AverageMeter()
     for split_idx, split in enumerate(splits):
         print(f"\nSplit {split_idx+1}")
-        model = NewModel(args.heads, args.d_enc, args.d_dec,
-                         args.enc_layers, args.dec_layers, max_len=10000, device=device)
+        model = TLOST(args.heads, args.d_model, args.num_sumtokens, args.layers,
+                      args.mask_size, max_len=10000, device=device)
         optim = Adam(model.parameters(), lr=args.lr,
                      weight_decay=args.weight_decay)
+
+        num_parameters = sum(p.numel()
+                             for p in model.parameters() if p.requires_grad)
+        print('model has %dM parameters' % (num_parameters // 1000000))
 
         train_split = split['train_keys']
         test_split = split['test_keys']
@@ -54,24 +50,33 @@ def main(args, splits):
         ft_time_start = time.time()
         model = model.to(device)
         fs_list = []
+        kt_list = []
+        sp_list = []
         for e in range(args.max_epoch):
             e_start = time.time()
             train_loss = train_step(model, optim, train_loader, device)
             e_end = time.time()
-            val_loss, f_score = val_step(model, val_loader, device, args)
+            val_loss, f_score, ktau, spr = val_step(
+                model, val_loader, device, args)
             fs_list.append(f_score)
+            kt_list.append(ktau)
+            sp_list.append(spr)
 
             if e % 10 == 0:
                 print(
-                    f"fine-tune Epoch {e}/{args.max_epoch} : [Train loss {train_loss:.4f}, Val loss {val_loss:.4f}, Epoch time {e_end-e_start:.4f}]")
+                    f"Epoch {e} : [Train loss {train_loss:.4f}, Val loss {val_loss:.4f}, Epoch time {e_end-e_start:.4f}]")
                 print(50*'-')
 
         ft_time_end = time.time()
         avg_fscore.update(max(fs_list), 1)
+        avg_ktau.update(max(kt_list), 1)
+        avg_spr.update(max(sp_list), 1)
         print(
-            f"\nsplit total time: {(ft_time_end-ft_time_start)/60:.4f}\n")
+            f"\nTotal time spent: {(ft_time_end-ft_time_start)/60:.4f}mins\n")
 
-    print(avg_fscore.avg())
+    print(f"Total fscore: {avg_fscore.avg()}")
+    print(f"Kendall_tau: {avg_ktau.avg()}")
+    print(f"Spearsman_r: {avg_spr.avg()}")
 
 
 def train_step(model, optim, ft_train_loader, device):
@@ -81,20 +86,8 @@ def train_step(model, optim, ft_train_loader, device):
         feature = feature.to(device)
         target = target.to(device)
 
-        vid_len = feature.size(1)
-        mask_ratio = int(0.3 * vid_len)
-        # ## select rand indices
-        vis_idx = torch.from_numpy(np.random.choice(
-            vid_len, mask_ratio, replace=False)).to(device)
-        vis_idx_to_zero = torch.arange(vid_len, device=device)
-        # ## set random indices to -1
-        vis_idx_to_zero[vis_idx] = -1
-        # ## remove out visible indices
-        mask_idx = vis_idx_to_zero[vis_idx_to_zero != -1]
-
-        pred = model(feature, mask_idx, vis_idx)
-        loss = model.new_model_criterian(
-            pred, target[:, mask_idx], mode='mse')
+        pred = model(feature).squeeze(dim=-1)
+        loss = model.criterian(pred, target)
 
         optim.zero_grad()
         loss.backward()
@@ -114,27 +107,23 @@ def val_step(model, ft_test_loader, device, args):
         feature = feature.to(device)
         target = target.to(device)
 
-        vid_len = feature.size(1)
-        vis_idx = torch.arange(vid_len, device=device)
-        mask_idx = torch.tensor([0], device=device)
-
-        pred = model(feature, mask_idx, vis_idx)
-        loss = model.new_model_criterian(pred, target, mode='mse')
+        pred = model(feature).squeeze(dim=-1)
+        loss = model.criterian(pred, target)
 
         loss_avg.update(loss.item(), 1)
         score_dict[vid_name[0]] = pred.squeeze(0).detach().cpu().numpy()
 
-    f_score = f1_score(score_dict, args)
+    f_score, ktau, spr = eval_metrics(score_dict, args)
 
-    return loss_avg.avg(), f_score
+    return loss_avg.avg(), f_score, ktau, spr
 
 
-args = argparse.ArgumentParser('new encoder model')
+args = argparse.ArgumentParser('LOST')
 args.add_argument('--heads', default=4, type=int)
-args.add_argument('--d_enc', default=512, type=int)
-args.add_argument('--d_dec', default=128, type=int)
-args.add_argument('--enc_layers', default=3, type=int)
-args.add_argument('--dec_layers', default=1, type=int)
+args.add_argument('--d_model', default=512, type=int)
+args.add_argument('--num_sumtokens', default=128, type=int)
+args.add_argument('--layers', default=3, type=int)
+args.add_argument('--mask_size', default=1, type=int)
 
 args.add_argument('--lr', default=1e5, type=float)
 args.add_argument('--weight_decay', default=0.01, type=float)
