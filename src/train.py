@@ -10,9 +10,8 @@ import wandb
 from model import MyNetwork
 from data import TSDataset, collate_fn
 from utils import set_seed, AverageMeter
-from evaluatation import f1_score
+from evaluatation import eval_metrics
 
-# TODO: add number of workers to dataloaders
 
 def main(args):
     for seed_num, seed in enumerate(args.seeds):
@@ -30,11 +29,15 @@ def main(args):
         train_loader = DataLoader(
             dataset=train_set,
             shuffle=True,
+            num_workers=4,
+            collate_fn=collate_fn,
             batch_size=args.batch_size,
         )
         val_loader = DataLoader(
             dataset=val_set,
             shuffle=True,
+            num_workers=4,
+            collate_fn=collate_fn,
             batch_size=args.batch_size,
         )
         model = MyNetwork(d_model=args.d_model, num_heads=args.num_heads,
@@ -51,17 +54,19 @@ def main(args):
                                      weight_decay=args.weight_decay)
         scaler = amp.GradScaler()
 
-        val_loss, f_score_val = val(model, val_loader, args)
+        val_loss, f_score_val, kts, sps = val(model, val_loader, args)
         logging.info('random weight network: Val Loss: %f\n\n' % val_loss)
         logging.info('Starting Training')
         for epoch in range(args.epochs):
-            train_loss, f_score_train = train(model, optimizer, scaler,
-                                              train_loader, args)
-            val_loss, f_score_val = val(model, val_loader, args)
+            train_loss, f_score_train, kts, sps = train(model, optimizer, scaler,
+                                                        train_loader, args)
+            val_loss, f_score_val, kt, sp = val(model, val_loader, args)
             # logging
             logging.info('Epoch %2d\nTrain Loss: %3.4f, Val Loss: %3.4f,'
-                         ' Train F Score: %f, Val F Score: %f' % (
-                             epoch + 1, train_loss, val_loss, f_score_train, f_score_val))
+                         ' Train F Score: %f, Val F Score: %f, Train KTS: %f'
+                         'Test KTS: %f, Train SPS: %f, Test SPS: %f ' %
+                         (epoch + 1, train_loss, val_loss, f_score_train, f_score_val,
+                          kts, kt, sps, sp))
             wandb.log(
                 {
                     'seed%d' % seed:
@@ -81,12 +86,13 @@ def main(args):
 
 
 def train(model, optimizer, scaler, loader, args):
-    score_dict = {}
+    score_dict, user_dict = {}, {}
     train_loss = AverageMeter()
     for i, data in enumerate(loader):
-        features, targets, vid_name = data
+        features, targets, user = data
         features = features.cuda()
         targets = targets.cuda()
+        user = user[0]
 
         batch_size = features.size()[0]
         with amp.autocast():
@@ -103,18 +109,20 @@ def train(model, optimizer, scaler, loader, args):
         scaler.update()
 
         # logging
-        score_dict[vid_name[0]] = logits.squeeze(0).detach().cpu().numpy()
+        score_dict[user.name[0]] = logits.squeeze(0).detach().cpu().numpy()
+        user_dict[user.name[0]] = user
         train_loss.update(loss.item(), 1)
         logging.info('step %d, loss: %f' % (i + 1, loss.item()))
-    f_score = f1_score(score_dict, args)
-    return train_loss.avg(), f_score
+    f_score, kts, sps = eval_metrics(score_dict, user_dict, args)
+    return train_loss.avg(), f_score, kts, sps
 
 
 def val(model, loader, args):
-    score_dict = {}
+    score_dict, user_dict = {}, {}
     test_loss = AverageMeter()
     for data in loader:
-        features, targets, vid_name = data
+        features, targets, user = data
+        user = user[0]
         features = features.cuda()
         targets = targets.cuda()
 
@@ -124,10 +132,11 @@ def val(model, loader, args):
         loss = F.mse_loss(output, targets, reduction='sum') \
                + 0.1 * torch.linalg.norm(output)
 
-        score_dict[vid_name[0]] = output.squeeze(0).detach().cpu().numpy()
+        score_dict[user.name[0]] = output.squeeze(0).detach().cpu().numpy()
+        user_dict[user.name[0]] = user
         test_loss.update(loss.item(), 1)
-    f_score = f1_score(score_dict, args)
-    return test_loss.avg(), f_score
+    f_score, kts, sps = eval_metrics(score_dict, user_dict, args)
+    return test_loss.avg(), f_score, kts, sps
 
 
 # arguments

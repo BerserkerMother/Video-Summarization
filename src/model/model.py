@@ -13,7 +13,7 @@ class MyNetwork(nn.Module):
                  attention_dim=256, scale=4, num_heads=4, num_layer=3,
                  dropout=0.2, sparsity=0.7,
                  use_pos: bool = True,
-                 use_cls: bool = True):
+                 use_cls: bool = False):
         super(MyNetwork, self).__init__()
         # module parameters
         self.d_model = d_model
