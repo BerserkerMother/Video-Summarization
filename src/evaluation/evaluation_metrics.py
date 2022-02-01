@@ -25,8 +25,7 @@ def evaluate_summary(predicted_summary, user_summary, eval_method):
         if precision+recall == 0:
             f_scores.append(0)
         else:
-            f_scores.append(2 * precision * recall *
-                            100 / (precision + recall))
+            f_scores.append(2 * precision * recall * 100 / (precision + recall))
 
     if eval_method == 'max':
         return max(f_scores)

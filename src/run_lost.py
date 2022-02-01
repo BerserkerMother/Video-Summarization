@@ -1,4 +1,3 @@
-import yaml
 import time
 import argparse
 
@@ -7,7 +6,7 @@ from torch.optim import Adam, AdamW
 from torch.utils.data import DataLoader
 from models import TLOST
 
-from utils import AverageMeter
+from utils import AverageMeter, load_json, load_yaml
 from evaluation.compute_metrics import eval_metrics
 from dataset import TSDataset
 
@@ -49,9 +48,7 @@ def main(args, splits):
 
         ft_time_start = time.time()
         model = model.to(device)
-        fs_list = []
-        kt_list = []
-        sp_list = []
+        fs_list, kt_list, sp_list = [], [], []
         for e in range(args.max_epoch):
             e_start = time.time()
             train_loss = train_step(model, optim, train_loader, device)
@@ -82,11 +79,12 @@ def main(args, splits):
 def train_step(model, optim, ft_train_loader, device):
     model.train()
     loss_avg = AverageMeter()
-    for i, (feature, target, name) in enumerate(ft_train_loader):
+    for i, (feature, target, _) in enumerate(ft_train_loader):
         feature = feature.to(device)
         target = target.to(device)
 
         pred = model(feature).squeeze(dim=-1)
+        pred = torch.sigmoid(pred)
         loss = model.criterian(pred, target)
 
         optim.zero_grad()
@@ -103,15 +101,16 @@ def val_step(model, ft_test_loader, device, args):
     model.eval()
     score_dict = {}
     loss_avg = AverageMeter()
-    for i, (feature, target, vid_name) in enumerate(ft_test_loader):
+    for i, (feature, target, name) in enumerate(ft_test_loader):
         feature = feature.to(device)
         target = target.to(device)
 
         pred = model(feature).squeeze(dim=-1)
+        pred = torch.sigmoid(pred)
         loss = model.criterian(pred, target)
 
         loss_avg.update(loss.item(), 1)
-        score_dict[vid_name[0]] = pred.squeeze(0).detach().cpu().numpy()
+        score_dict[name[0]] = pred.squeeze(0).detach().cpu().numpy()
 
     f_score, ktau, spr = eval_metrics(score_dict, args)
 
@@ -133,13 +132,18 @@ args.add_argument('--dataset', type=str)
 args.add_argument('--batch_size', default=1, type=int)
 args.add_argument('--max_epoch', default=200, type=int)
 
+args.add_argument('--dsnet_split', action='store_true')
+
 arguments = args.parse_args()
 
 if __name__ == '__main__':
-    split_path = "splits/tvsum.yaml"
-    with open(split_path, 'r') as f:
-        try:
-            splits = yaml.safe_load(f)
-        except yaml.YAMLError as e:
-            print(e)
+    print(arguments.dsnet_split)
+    if arguments.dsnet_split:
+        split_path = "splits_dsnet/tvsum.yaml"
+        splits = load_yaml(split_path)
+    else:
+        split_path = "splits_summarizer/tvsum_splits.json"
+        splits = load_json(split_path)
+
+    # print(splits)
     main(arguments, splits)
