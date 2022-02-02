@@ -1,12 +1,13 @@
 import time
 import argparse
+import wandb
 
 import torch
 from torch.optim import Adam, AdamW
 from torch.utils.data import DataLoader
 from models import TLOST
 
-from utils import AverageMeter, load_json, load_yaml
+from utils import set_seed, AverageMeter, load_json, load_yaml
 from evaluation.compute_metrics import eval_metrics
 from dataset import TSDataset, collate_fn
 
@@ -18,15 +19,20 @@ def main(args, splits):
     avg_ktau = AverageMeter()
     avg_spr = AverageMeter()
     for split_idx, split in enumerate(splits):
+        set_seed(34123312)
+        wandb.init(project='Video-Summarization', entity='berserkermother',
+                   name=args.__str__(), config=args, reinit=True)
+        wandb.config.seed = 34123312
         print(f"\nSplit {split_idx + 1}")
         model = TLOST(args.heads, args.d_model, args.num_sumtokens, args.layers,
-                      args.mask_size, max_len=10000, device=device)
+                      args.mask_size, args.dropout, max_len=10000, device=device)
         optim = Adam(model.parameters(), lr=args.lr,
                      weight_decay=args.weight_decay)
 
         num_parameters = sum(p.numel()
                              for p in model.parameters() if p.requires_grad)
         print('model has %dM parameters' % (num_parameters // 1000000))
+        wandb.config.num_el = 34123312
 
         train_split = split['train_keys']
         test_split = split['test_keys']
@@ -62,6 +68,21 @@ def main(args, splits):
             fs_list.append(f_score)
             kt_list.append(ktau)
             sp_list.append(spr)
+            wandb.log(
+                {
+                    'split%d' % split_idx:
+                        {
+                            'loss': {
+                                'train': train_loss,
+                                'val': val_loss
+                            },
+                            'F Score': f_score,
+                            'Kendal': ktau,
+                            'SpearMan': spr
+                        }
+
+                }
+            )
 
             if e % 10 == 0:
                 print(
@@ -74,6 +95,8 @@ def main(args, splits):
         avg_spr.update(max(sp_list), 1)
         print(
             f"\nTotal time spent: {(ft_time_end - ft_time_start) / 60:.4f}mins\n")
+
+        wandb.finish()
 
     print(f"Total fscore: {avg_fscore.avg()}")
     print(f"Kendall_tau: {avg_ktau.avg()}")
@@ -127,6 +150,7 @@ args.add_argument('--d_model', default=512, type=int)
 args.add_argument('--num_sumtokens', default=128, type=int)
 args.add_argument('--layers', default=3, type=int)
 args.add_argument('--mask_size', default=1, type=int)
+args.add_argument('--dropout', default=0.3, type=float)
 
 args.add_argument('--lr', default=1e5, type=float)
 args.add_argument('--weight_decay', default=0.01, type=float)

@@ -1,5 +1,15 @@
+import torch
+
 import yaml
 import json
+import random
+import numpy as np
+
+
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
 
 class AverageMeter:
@@ -8,7 +18,7 @@ class AverageMeter:
         self.num = 0
 
     def update(self, val, num):
-        self.val += val*num
+        self.val += val * num
         self.num += num
 
     def avg(self):

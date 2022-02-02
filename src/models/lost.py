@@ -1,4 +1,3 @@
-
 import torch
 from torch import nn, Tensor
 import torch.nn.functional as F
@@ -9,7 +8,7 @@ class TLOST(nn.Module):
     Transformer-with-LOcal-attention-and-SumToken!! (TLOST)
     """
 
-    def __init__(self, heads, d_model, num_sumtokens, layers, mask_size, max_len, device):
+    def __init__(self, heads, d_model, num_sumtokens, layers, mask_size, dropout, max_len, device):
         super().__init__()
         self.heads = heads
         self.d_model = d_model
@@ -27,8 +26,8 @@ class TLOST(nn.Module):
 
         self.first_layer = nn.Linear(self.in_features, self.d_model)
 
-        self.encoder = Encoder(heads, self.d_model, self.layers)
-        self.decoder = Decoder(heads, self.d_model, self.layers)
+        self.encoder = Encoder(heads, self.d_model, self.layers, dropout)
+        self.decoder = Decoder(heads, self.d_model, self.layers, dropout)
 
         self.final_layer = nn.Linear(self.d_model, 1)
 
@@ -40,7 +39,7 @@ class TLOST(nn.Module):
         mask2 = torch.ones(n, n).tril(diagonal=-size)
         mask = mask1 + mask2
         idx = torch.tensor(
-            [0, int(0.2*n), int(0.4*n), int(0.6*n), int(0.8*n), n-1])
+            [0, int(0.2 * n), int(0.4 * n), int(0.6 * n), int(0.8 * n), n - 1])
         mask.index_fill_(0, idx, 0)
         mask.index_fill_(1, idx, 0)
         return mask.type(torch.bool)
@@ -82,7 +81,7 @@ class TLOST(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, heads, d_model, enc_layers):
+    def __init__(self, heads, d_model, enc_layers, dropout):
         super().__init__()
         self.heads = heads
         self.d_model = d_model
@@ -91,7 +90,7 @@ class Encoder(nn.Module):
         modules = []
         for _ in range(self.enc_layers):
             modules.append(
-                EncoderBlock(heads=self.heads, d_model=self.d_model, drop_rate=0.3))
+                EncoderBlock(heads=self.heads, d_model=self.d_model, drop_rate=dropout))
         self.module_list = nn.ModuleList(modules)
 
     def forward(self, x: Tensor, local_mask):
@@ -114,10 +113,10 @@ class EncoderBlock(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
 
         self.mlp = nn.Sequential(
-            nn.Linear(self.d_model, self.d_model*2),
+            nn.Linear(self.d_model, self.d_model * 2),
             nn.ReLU(),
             nn.Dropout(self.drop_rate),
-            nn.Linear(self.d_model*2, self.d_model)
+            nn.Linear(self.d_model * 2, self.d_model)
         )
 
     def forward(self, x: Tensor, local_mask):
@@ -131,7 +130,7 @@ class EncoderBlock(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, heads, d_model, dec_layers):
+    def __init__(self, heads, d_model, dec_layers, dropout):
         super().__init__()
         self.heads = heads
         self.d_model = d_model
@@ -140,7 +139,7 @@ class Decoder(nn.Module):
         modules = []
         for _ in range(self.dec_layers):
             modules.append(
-                DecoderBlock(heads=self.heads, d_model=self.d_model, drop_rate=0.3))
+                DecoderBlock(heads=self.heads, d_model=self.d_model, drop_rate=dropout))
         self.module_list = nn.ModuleList(modules)
 
     def forward(self, x: Tensor, mem):
@@ -165,10 +164,10 @@ class DecoderBlock(nn.Module):
         self.norm3 = nn.LayerNorm(d_model)
 
         self.mlp = nn.Sequential(
-            nn.Linear(self.d_model, self.d_model*2),
+            nn.Linear(self.d_model, self.d_model * 2),
             nn.ReLU(),
             nn.Dropout(self.drop_rate),
-            nn.Linear(self.d_model*2, self.d_model)
+            nn.Linear(self.d_model * 2, self.d_model)
         )
 
     def forward(self, x: Tensor, mem: Tensor):
@@ -198,7 +197,7 @@ class MHA(nn.Module):
 
         self.drop_out = nn.Dropout(0.2)
 
-        self.out_proj = nn.Linear(self.d_k*self.heads, self.d_model)
+        self.out_proj = nn.Linear(self.d_k * self.heads, self.d_model)
 
     def _scaled_dot_product(self, q, k, mask=None):
         scaled_dp = (q @ k.transpose(-1, -2)) / self.d_k ** 0.5
@@ -238,7 +237,7 @@ class PositionalEncoding(nn.Module):
         i = torch.arange(d_model)
         self.d_model = d_model
         # for each dimension of d_model compute angle
-        angle = 10000 ** (2*(i/2) / self.d_model)
+        angle = 10000 ** (2 * (i / 2) / self.d_model)
         encoding = pos / angle
 
         # sin for even dims: 2i
