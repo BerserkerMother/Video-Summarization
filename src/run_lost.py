@@ -8,7 +8,7 @@ from models import TLOST
 
 from utils import AverageMeter, load_json, load_yaml
 from evaluation.compute_metrics import eval_metrics
-from dataset import TSDataset
+from dataset import TSDataset, collate_fn
 
 
 def main(args, splits):
@@ -18,7 +18,7 @@ def main(args, splits):
     avg_ktau = AverageMeter()
     avg_spr = AverageMeter()
     for split_idx, split in enumerate(splits):
-        print(f"\nSplit {split_idx+1}")
+        print(f"\nSplit {split_idx + 1}")
         model = TLOST(args.heads, args.d_model, args.num_sumtokens, args.layers,
                       args.mask_size, max_len=10000, device=device)
         optim = Adam(model.parameters(), lr=args.lr,
@@ -37,13 +37,17 @@ def main(args, splits):
         train_loader = DataLoader(
             dataset=train_split_set,
             shuffle=True,
-            batch_size=args.batch_size,
+            num_workers=4,
+            collate_fn=collate_fn,
+            batch_size=args.batch_size
         )
 
         val_loader = DataLoader(
             dataset=val_split_set,
             shuffle=True,
-            batch_size=args.batch_size,
+            num_workers=4,
+            collate_fn=collate_fn,
+            batch_size=args.batch_size
         )
 
         ft_time_start = time.time()
@@ -61,15 +65,15 @@ def main(args, splits):
 
             if e % 10 == 0:
                 print(
-                    f"Epoch {e} : [Train loss {train_loss:.4f}, Val loss {val_loss:.4f}, Epoch time {e_end-e_start:.4f}]")
-                print(50*'-')
+                    f"Epoch {e} : [Train loss {train_loss:.4f}, Val loss {val_loss:.4f}, Epoch time {e_end - e_start:.4f}]")
+                print(50 * '-')
 
         ft_time_end = time.time()
         avg_fscore.update(max(fs_list), 1)
         avg_ktau.update(max(kt_list), 1)
         avg_spr.update(max(sp_list), 1)
         print(
-            f"\nTotal time spent: {(ft_time_end-ft_time_start)/60:.4f}mins\n")
+            f"\nTotal time spent: {(ft_time_end - ft_time_start) / 60:.4f}mins\n")
 
     print(f"Total fscore: {avg_fscore.avg()}")
     print(f"Kendall_tau: {avg_ktau.avg()}")
@@ -99,9 +103,9 @@ def train_step(model, optim, ft_train_loader, device):
 @torch.no_grad()
 def val_step(model, ft_test_loader, device, args):
     model.eval()
-    score_dict = {}
+    score_dict, user_dict = {}, {}
     loss_avg = AverageMeter()
-    for i, (feature, target, name) in enumerate(ft_test_loader):
+    for i, (feature, target, user) in enumerate(ft_test_loader):
         feature = feature.to(device)
         target = target.to(device)
 
@@ -110,9 +114,9 @@ def val_step(model, ft_test_loader, device, args):
         loss = model.criterian(pred, target)
 
         loss_avg.update(loss.item(), 1)
-        score_dict[name[0]] = pred.squeeze(0).detach().cpu().numpy()
-
-    f_score, ktau, spr = eval_metrics(score_dict, args)
+        score_dict[user.name] = pred.squeeze(0).detach().cpu().numpy()
+        user_dict[user.name] = user
+    f_score, ktau, spr = eval_metrics(score_dict, user_dict, args)
 
     return loss_avg.avg(), f_score, ktau, spr
 
@@ -139,10 +143,10 @@ arguments = args.parse_args()
 if __name__ == '__main__':
     print(arguments.dsnet_split)
     if arguments.dsnet_split:
-        split_path = "splits_dsnet/tvsum.yaml"
+        split_path = "src/splits_dsnet/tvsum.yaml"
         splits = load_yaml(split_path)
     else:
-        split_path = "splits_summarizer/tvsum_splits.json"
+        split_path = "src/splits_summarizer/tvsum_splits.json"
         splits = load_json(split_path)
 
     # print(splits)

@@ -38,7 +38,7 @@ def upsample(scores, n_frames, positions):
     return frame_scores
 
 
-def eval_metrics(data, args):
+def eval_metrics(data, user_dict, args):
     eval_method = 'avg'
     dataset_path = os.path.join(args.data, PATH[args.dataset])
 
@@ -51,19 +51,19 @@ def eval_metrics(data, args):
 
     all_user_summary, all_user_scores, all_shot_bound, \
         all_nframes, all_positions = [], [], [], [], []
-    with h5py.File(dataset_path, 'r') as f:
-        for key in keys:
-            user_summary = np.array(f[key]['user_summary'])
-            user_scores = np.array(f[key]["user_scores"])
-            sb = np.array(f[key]['change_points'])
-            n_frames = np.array(f[key]['n_frames'])
-            positions = np.array(f[key]['picks'])
+    for key in keys:
+        user = user_dict[key]
+        user_summary = user.user_summary
+        user_scores = user.user_scores
+        sb = user.change_points
+        n_frames = user.n_frames
+        positions = user.picks
 
-            all_user_summary.append(user_summary)
-            all_user_scores.append(user_scores)
-            all_shot_bound.append(sb)
-            all_nframes.append(n_frames)
-            all_positions.append(positions)
+        all_user_summary.append(user_summary)
+        all_user_scores.append(user_scores)
+        all_shot_bound.append(sb)
+        all_nframes.append(n_frames)
+        all_positions.append(positions)
 
     all_summaries = generate_summary(
         all_shot_bound, all_scores, all_nframes, all_positions)
