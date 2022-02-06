@@ -22,7 +22,7 @@ class TLOST(nn.Module):
         self.pos_enc = PositionalEncoding(
             self.max_len, self.d_model)
 
-        self.sum_tokens = nn.Embedding(self.num_sumtokens, self.d_model)
+        self.sum_tokens = nn.Parameter(torch.zeros((2000, d_model)))
 
         self.first_layer = nn.Linear(self.in_features, self.d_model)
 
@@ -52,27 +52,7 @@ class TLOST(nn.Module):
         assert self.mask_size < x.size(1)
         local_mask = self.create_local_mask(n, self.mask_size).to(self.device)
         mem = self.encoder(pe_x, local_mask)
-
-        num_shared_toks = int(n / self.num_sumtokens)
-        sum_toks = torch.empty(bs, n, self.d_model, device=self.device)
-        st = 0
-        ed = num_shared_toks
-        for i in range(self.num_sumtokens):
-            tok = self.sum_tokens(torch.tensor([i], device=self.device))
-
-            if i == self.num_sumtokens - 1:
-                last_len = n - ed + num_shared_toks
-                tok = tok.view(1, 1, self.d_model).expand(
-                    bs, last_len, self.d_model)
-                sum_toks[:, -last_len:n, :] = tok
-                break
-
-            tok = tok.view(1, 1, self.d_model).expand(
-                bs, num_shared_toks, self.d_model)
-            sum_toks[:, st:ed, :] = tok
-            st = ed
-            ed += num_shared_toks
-
+        sum_toks = self.sum_tokens[:n, :].expand(bs, n, self.d_model)
         out = self.decoder(sum_toks, mem)
 
         final_out = self.final_layer(out)

@@ -5,6 +5,7 @@ import wandb
 import torch
 from torch.optim import Adam, AdamW
 from torch.utils.data import DataLoader
+from torch.cuda import amp
 from models import TLOST
 
 from utils import set_seed, AverageMeter, load_json, load_yaml
@@ -28,6 +29,8 @@ def main(args, splits):
                       args.mask_size, args.dropout, max_len=10000, device=device)
         optim = Adam(model.parameters(), lr=args.lr,
                      weight_decay=args.weight_decay)
+
+        scaler = amp.GradScaler()
 
         num_parameters = sum(p.numel()
                              for p in model.parameters() if p.requires_grad)
@@ -61,7 +64,7 @@ def main(args, splits):
         fs_list, kt_list, sp_list = [], [], []
         for e in range(args.max_epoch):
             e_start = time.time()
-            train_loss = train_step(model, optim, train_loader, device)
+            train_loss = train_step(model, optim, train_loader, scaler, device)
             e_end = time.time()
             val_loss, f_score, ktau, spr = val_step(
                 model, val_loader, device, args)
@@ -88,7 +91,6 @@ def main(args, splits):
                 print(
                     f"Epoch {e} : [Train loss {train_loss:.4f}, Val loss {val_loss:.4f}, Epoch time {e_end - e_start:.4f}]")
                 print(50 * '-')
-
         ft_time_end = time.time()
         avg_fscore.update(max(fs_list), 1)
         avg_ktau.update(max(kt_list), 1)
@@ -103,20 +105,22 @@ def main(args, splits):
     print(f"Spearsman_r: {avg_spr.avg()}")
 
 
-def train_step(model, optim, ft_train_loader, device):
+def train_step(model, optim, ft_train_loader, scaler, device):
     model.train()
     loss_avg = AverageMeter()
     for i, (feature, target, _) in enumerate(ft_train_loader):
         feature = feature.to(device)
         target = target.to(device)
 
-        pred = model(feature).squeeze(dim=-1)
-        pred = torch.sigmoid(pred)
-        loss = model.criterian(pred, target)
+        with amp.autocast():
+            pred = model(feature).squeeze(dim=-1)
+            pred = torch.sigmoid(pred)
+            loss = model.criterian(pred, target)
 
         optim.zero_grad()
-        loss.backward()
-        optim.step()
+        scaler.scale(loss).backward()
+        scaler.step(optim)
+        scaler.update()
 
         loss_avg.update(loss.item(), 1)
 
