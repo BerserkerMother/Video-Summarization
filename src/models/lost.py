@@ -22,7 +22,7 @@ class TLOST(nn.Module):
         self.pos_enc = PositionalEncoding(
             self.max_len, self.d_model)
 
-        self.sum_tokens = nn.Parameter(torch.zeros((2000, d_model)))
+        self.sum_tokens = nn.Parameter(torch.zeros(self.num_sumtokens, self.d_model))
 
         self.first_layer = nn.Linear(self.in_features, self.d_model)
 
@@ -52,7 +52,13 @@ class TLOST(nn.Module):
         assert self.mask_size < x.size(1)
         local_mask = self.create_local_mask(n, self.mask_size).to(self.device)
         mem = self.encoder(pe_x, local_mask)
-        sum_toks = self.sum_tokens[:n, :].expand(bs, n, self.d_model)
+        # sum tokens
+        token_expand = (n // self.num_sumtokens) + 1
+        sum_toks = self.sum_tokens.view(self.num_sumtokens, 1, -1) \
+            .expand(self.num_sumtokens, token_expand, self.d_model)
+        sum_toks = sum_toks.contiguous().view(1, -1, self.d_model). \
+            expand(bs, self.num_sumtokens * token_expand, self.d_model)
+        sum_toks = sum_toks[:, :n, :]
         out = self.decoder(sum_toks, mem)
 
         final_out = self.final_layer(out)
