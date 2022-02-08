@@ -35,11 +35,12 @@ class TLOSTReinforce(nn.Module):
         return F.mse_loss(pred, true)
 
     def create_local_mask(self, n, size):
-        mask1 = torch.ones(n, n).triu(diagonal=size)
-        mask2 = torch.ones(n, n).tril(diagonal=-size)
+        mask1 = torch.ones((n, n), device=self.device).triu(diagonal=size)
+        mask2 = torch.ones((n, n), device=self.device).tril(diagonal=-size)
         mask = mask1 + mask2
         idx = torch.tensor(
-            [0, int(0.2 * n), int(0.4 * n), int(0.6 * n), int(0.8 * n), n - 1])
+            [0, int(0.2 * n), int(0.4 * n), int(0.6 * n), int(0.8 * n), n - 1],
+            device=self.device)
         mask.index_fill_(0, idx, 0)
         mask.index_fill_(1, idx, 0)
         return mask.type(torch.bool)
@@ -50,7 +51,7 @@ class TLOSTReinforce(nn.Module):
 
         bs, n, _ = x.size()
         assert self.mask_size < x.size(1)
-        local_mask = self.create_local_mask(n, self.mask_size).to(self.device)
+        local_mask = self.create_local_mask(n, self.mask_size)
         mem = self.encoder(pe_x, local_mask)
         # sum tokens
         token_expand = (n // self.num_sumtokens) + 1
