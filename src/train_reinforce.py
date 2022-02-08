@@ -2,11 +2,11 @@ import time
 import argparse
 import wandb
 import logging
+import os
 
 import torch
-from torch.optim import Adam, AdamW
+from torch.optim import Adam
 from torch.utils.data import DataLoader
-from torch.cuda import amp
 from torch import distributions
 
 from models import TLOSTReinforce
@@ -33,6 +33,11 @@ def main(args, splits):
                                max_len=10000, device=device)
         optim = Adam(model.parameters(), lr=args.lr,
                      weight_decay=args.weight_decay)
+        # loads model.pth
+        if args.use_model:
+            if os.path.exists(args.use_model):
+                state_dict = torch.load(args.use_model)
+                model.load_state_dict(state_dict, strict=False)
 
         num_parameters = sum(p.numel()
                              for p in model.parameters() if p.requires_grad)
@@ -96,6 +101,9 @@ def main(args, splits):
                 f" Epoch time {e_end - e_start:.4f}]")
             logging.info("F score: %2.4f, Kendal: %2.4f, Spearman: %2.4f"
                          % (f_score, ktau, spr))
+            # save model's state dict
+            torch.save(model.state_dict(), "model_rl.pth")
+
         ft_time_end = time.time()
         avg_fscore.update(max(fs_list), 1)
         avg_ktau.update(max(kt_list), 1)
@@ -173,6 +181,10 @@ arg_parser.add_argument('--data', type=str)
 arg_parser.add_argument('--dataset', type=str)
 arg_parser.add_argument('--batch_size', default=1, type=int)
 arg_parser.add_argument('--max_epoch', default=200, type=int)
+arg_parser.add_argument("--use_model", default="", type=str,
+                        help="given a model path, it will load it")
+arg_parser.add_argument("--save", action="store_true",
+                        help="if true it saved model after each epoch")
 
 arg_parser.add_argument('--dsnet_split', action='store_true')
 
@@ -184,7 +196,6 @@ logging.basicConfig(
 )
 
 if __name__ == '__main__':
-    logging.info(arguments.dsnet_split)
     if arguments.dsnet_split:
         split_path = "src/splits_dsnet/tvsum.yaml"
         splits = load_yaml(split_path)
