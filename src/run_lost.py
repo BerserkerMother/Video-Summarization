@@ -2,6 +2,7 @@ import time
 import argparse
 import wandb
 import logging
+import os
 
 import torch
 from torch.optim import Adam
@@ -32,11 +33,16 @@ def main(args, splits):
                      weight_decay=args.weight_decay)
 
         scaler = amp.GradScaler()
+        # loads model.pth
+        if os.path.exists("model_mae.pth"):
+            if args.use_model:
+                state_dict = torch.load(args.use_model)
+                model.load_state_dict(state_dict)
 
         num_parameters = sum(p.numel()
                              for p in model.parameters() if p.requires_grad)
         logging.info('model has %dM parameters' % (num_parameters // 1000000))
-        wandb.config.num_el = 34123312
+        wandb.config.num_el = num_parameters
 
         train_split = split['train_keys']
         test_split = split['test_keys']
@@ -91,6 +97,9 @@ def main(args, splits):
             logging.info(
                 f"Epoch {e} : [Train loss {train_loss:.4f}, Val loss {val_loss:.4f}, Epoch time {e_end - e_start:.4f}]")
             logging.info(50 * '-')
+            # save model's state dict
+            torch.save(model.state_dict(), "model_mae.pth")
+
         ft_time_end = time.time()
         avg_fscore.update(max(fs_list), 1)
         avg_ktau.update(max(kt_list), 1)
@@ -148,27 +157,31 @@ def val_step(model, ft_test_loader, device, args):
     return loss_avg.avg(), f_score, ktau, spr
 
 
-args = argparse.ArgumentParser('LOST')
-args.add_argument('--heads', default=4, type=int)
-args.add_argument('--d_model', default=512, type=int)
-args.add_argument('--num_sumtokens', default=128, type=int)
-args.add_argument('--layers', default=3, type=int)
-args.add_argument('--mask_size', default=1, type=int)
-args.add_argument('--dropout', default=0.3, type=float)
+arg_parser = argparse.ArgumentParser('LOST')
+arg_parser.add_argument('--heads', default=4, type=int)
+arg_parser.add_argument('--d_model', default=512, type=int)
+arg_parser.add_argument('--num_sumtokens', default=128, type=int)
+arg_parser.add_argument('--layers', default=3, type=int)
+arg_parser.add_argument('--mask_size', default=1, type=int)
+arg_parser.add_argument('--dropout', default=0.3, type=float)
 
-args.add_argument('--lr', default=1e5, type=float)
-args.add_argument('--weight_decay', default=0.01, type=float)
+arg_parser.add_argument('--lr', default=1e5, type=float)
+arg_parser.add_argument('--weight_decay', default=0.01, type=float)
 
-args.add_argument('--data', type=str)
-args.add_argument('--dataset', type=str)
-args.add_argument('--batch_size', default=1, type=int)
-args.add_argument('--max_epoch', default=200, type=int)
-args.add_argument("--name", default="", type=str,
-                  help="wandb experiment name")
+arg_parser.add_argument('--data', type=str)
+arg_parser.add_argument('--dataset', type=str)
+arg_parser.add_argument('--batch_size', default=1, type=int)
+arg_parser.add_argument('--max_epoch', default=200, type=int)
+arg_parser.add_argument("--name", default="", type=str,
+                        help="wandb experiment name")
+arg_parser.add_argument("--use_model", action="store_true",
+                        help="if true it loads model.pth")
+arg_parser.add_argument("--save", action="store_true",
+                        help="if true it saved model after each epoch")
 
-args.add_argument('--dsnet_split', action='store_true')
+arg_parser.add_argument('--dsnet_split', action='store_true')
 
-arguments = args.parse_args()
+arguments = arg_parser.parse_args()
 
 logging.basicConfig(
     format='[%(levelname)s] %(module)s - %(message)s',
