@@ -1,4 +1,5 @@
-import h5py
+import logging
+
 import os
 
 import numpy as np
@@ -40,7 +41,6 @@ def upsample(scores, n_frames, positions):
 
 def eval_metrics(data, user_dict, args):
     eval_method = 'avg'
-    dataset_path = os.path.join(args.data, PATH[args.dataset])
 
     all_scores = []
     keys = list(data.keys())
@@ -86,7 +86,7 @@ def eval_metrics(data, user_dict, args):
         all_kendal.append(kendal)
         all_spear.append(spear)
         all_f_scores.append(f_score)
-    print(
+    logging.info(
         f" [f_score: {np.mean(all_f_scores):.4f}, kenadall_tau: {np.mean(all_kendal):.4f}, spearsman_r: {np.mean(all_spear):.4f}]")
 
     return np.mean(all_f_scores), np.mean(all_kendal), np.mean(all_spear)

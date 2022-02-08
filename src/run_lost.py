@@ -1,9 +1,10 @@
 import time
 import argparse
 import wandb
+import logging
 
 import torch
-from torch.optim import Adam, AdamW
+from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.cuda import amp
 from models import TLOST
@@ -15,16 +16,16 @@ from dataset import TSDataset, collate_fn
 
 def main(args, splits):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print('Start Training...')
+    logging.info('Start Training...')
     avg_fscore = AverageMeter()
     avg_ktau = AverageMeter()
     avg_spr = AverageMeter()
     for split_idx, split in enumerate(splits):
         set_seed(34123312)
         wandb.init(project='Video-Summarization', entity='berserkermother',
-                   name=args.__str__(), config=args, reinit=True)
+                   name=args.__str__()[10:-1], config=args, reinit=True)
         wandb.config.seed = 34123312
-        print(f"\nSplit {split_idx + 1}")
+        logging.info(f"\nSplit {split_idx + 1}")
         model = TLOST(args.heads, args.d_model, args.num_sumtokens, args.layers,
                       args.mask_size, args.dropout, max_len=10000, device=device)
         optim = Adam(model.parameters(), lr=args.lr,
@@ -34,7 +35,7 @@ def main(args, splits):
 
         num_parameters = sum(p.numel()
                              for p in model.parameters() if p.requires_grad)
-        print('model has %dM parameters' % (num_parameters // 1000000))
+        logging.info('model has %dM parameters' % (num_parameters // 1000000))
         wandb.config.num_el = 34123312
 
         train_split = split['train_keys']
@@ -87,22 +88,21 @@ def main(args, splits):
                 }
             )
 
-            if e % 10 == 0:
-                print(
-                    f"Epoch {e} : [Train loss {train_loss:.4f}, Val loss {val_loss:.4f}, Epoch time {e_end - e_start:.4f}]")
-                print(50 * '-')
+            logging.info(
+                f"Epoch {e} : [Train loss {train_loss:.4f}, Val loss {val_loss:.4f}, Epoch time {e_end - e_start:.4f}]")
+            logging.info(50 * '-')
         ft_time_end = time.time()
         avg_fscore.update(max(fs_list), 1)
         avg_ktau.update(max(kt_list), 1)
         avg_spr.update(max(sp_list), 1)
-        print(
+        logging.info(
             f"\nTotal time spent: {(ft_time_end - ft_time_start) / 60:.4f}mins\n")
 
         wandb.finish()
 
-    print(f"Total fscore: {avg_fscore.avg()}")
-    print(f"Kendall_tau: {avg_ktau.avg()}")
-    print(f"Spearsman_r: {avg_spr.avg()}")
+    logging.info(f"Total fscore: {avg_fscore.avg()}")
+    logging.info(f"Kendall_tau: {avg_ktau.avg()}")
+    logging.info(f"Spearsman_r: {avg_spr.avg()}")
 
 
 def train_step(model, optim, ft_train_loader, scaler, device):
@@ -163,13 +163,20 @@ args.add_argument('--data', type=str)
 args.add_argument('--dataset', type=str)
 args.add_argument('--batch_size', default=1, type=int)
 args.add_argument('--max_epoch', default=200, type=int)
+args.add_argument("--name", default="", type=str,
+                  help="wandb experiment name")
 
 args.add_argument('--dsnet_split', action='store_true')
 
 arguments = args.parse_args()
 
+logging.basicConfig(
+    format='[%(levelname)s] %(module)s - %(message)s',
+    level=logging.INFO
+)
+
 if __name__ == '__main__':
-    print(arguments.dsnet_split)
+    logging.info(arguments.dsnet_split)
     if arguments.dsnet_split:
         split_path = "src/splits_dsnet/tvsum.yaml"
         splits = load_yaml(split_path)
