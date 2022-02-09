@@ -68,13 +68,32 @@ def main(args, splits):
 
         ft_time_start = time.time()
         model = model.to(device)
+        # random weights test
+        train_loss = train_step(model, optim, train_loader, scaler, device)
+        val_loss, f_score, ktau, spr = val_step(
+            model, val_loader, device)
+        wandb.log(
+            {
+                'split%d' % split_idx:
+                    {
+                        'loss': {
+                            'train': train_loss,
+                            'val': val_loss
+                        },
+                        'F Score': f_score,
+                        'Kendal': ktau,
+                        'SpearMan': spr
+                    }
+
+            }
+        )
         fs_list, kt_list, sp_list = [], [], []
         for e in range(args.max_epoch):
             e_start = time.time()
             train_loss = train_step(model, optim, train_loader, scaler, device)
             e_end = time.time()
             val_loss, f_score, ktau, spr = val_step(
-                model, val_loader, device, args)
+                model, val_loader, device)
             fs_list.append(f_score)
             kt_list.append(ktau)
             sp_list.append(spr)
@@ -137,7 +156,7 @@ def train_step(model, optim, ft_train_loader, scaler, device):
 
 
 @torch.no_grad()
-def val_step(model, ft_test_loader, device, args):
+def val_step(model, ft_test_loader, device):
     model.eval()
     score_dict, user_dict = {}, {}
     loss_avg = AverageMeter()
@@ -152,7 +171,7 @@ def val_step(model, ft_test_loader, device, args):
         loss_avg.update(loss.item(), 1)
         score_dict[user.name] = pred.squeeze(0).detach().cpu().numpy()
         user_dict[user.name] = user
-    f_score, ktau, spr = eval_metrics(score_dict, user_dict, args)
+    f_score, ktau, spr = eval_metrics(score_dict, user_dict)
 
     return loss_avg.avg(), f_score, ktau, spr
 
