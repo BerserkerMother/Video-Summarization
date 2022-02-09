@@ -39,7 +39,7 @@ def upsample(scores, n_frames, positions):
     return frame_scores
 
 
-def eval_metrics(data, user_dict, args):
+def eval_metrics(data, user_dict):
     eval_method = 'avg'
 
     all_scores = []
@@ -50,7 +50,7 @@ def eval_metrics(data, user_dict, args):
         all_scores.append(scores)
 
     all_user_summary, all_user_scores, all_shot_bound, \
-        all_nframes, all_positions = [], [], [], [], []
+    all_nframes, all_positions = [], [], [], [], []
     for key in keys:
         user = user_dict[key]
         user_summary = user.user_summary

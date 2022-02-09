@@ -27,7 +27,7 @@ class TSDataset(Dataset):
                 self.data.append(f[key]['features'][...].astype(np.float32))
                 self.target.append(f[key]['gtscore'][...].astype(np.float32))
                 user_summary = np.array(f[key]['user_summary'])
-                user_scores = f[key]["user_scores"][...]
+                user_scores = np.array(f[key]["user_scores"])
                 sb = np.array(f[key]['change_points'])
                 n_frames = np.array(f[key]['n_frames'])
                 positions = np.array(f[key]['picks'])
