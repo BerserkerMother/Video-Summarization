@@ -50,14 +50,15 @@ def main(args, splits):
         train_split = split['train_keys']
         test_split = split['test_keys']
 
-        train_split_set = TSDataset(args.data, args.dataset, train_split)
-        val_split_set = TSDataset(args.data, args.dataset, test_split)
+        train_split_set = TSDataset(args.data, args.ex_dataset, args.datasets,
+                                    train_split)
+        val_split_set = TSDataset(args.data, args.ex_dataset, args.datasets,
+                                  test_split, split="val")
 
         train_loader = DataLoader(
             dataset=train_split_set,
             shuffle=True,
             num_workers=4,
-            collate_fn=collate_fn,
             batch_size=args.batch_size
         )
 
@@ -139,7 +140,7 @@ def main(args, splits):
 def train_step(model, optim, ft_train_loader, scaler, device):
     model.train()
     loss_avg = AverageMeter()
-    for i, (feature, target, _) in enumerate(ft_train_loader):
+    for i, (feature, target) in enumerate(ft_train_loader):
         feature = feature.to(device)
         target = target.to(device)
 
@@ -190,21 +191,32 @@ def save_attention_weights(model, ft_train_loader, device):
     torch.save(attention_weights_all, "weights.pth")
 
 
-arg_parser = argparse.ArgumentParser('LOST')
-arg_parser.add_argument('--heads', default=4, type=int)
+arg_parser = argparse.ArgumentParser('Local Attention with '
+                                     'Summarization Tokens')
+arg_parser.add_argument('--heads', default=4, type=int,
+                        help="number of self attention heads")
 arg_parser.add_argument('--d_model', default=512, type=int)
-arg_parser.add_argument('--num_sumtokens', default=128, type=int)
-arg_parser.add_argument('--layers', default=3, type=int)
-arg_parser.add_argument('--mask_size', default=1, type=int)
-arg_parser.add_argument('--dropout', default=0.3, type=float)
+arg_parser.add_argument('--num_sumtokens', default=128, type=int,
+                        help="number of summary tokens")
+arg_parser.add_argument('--layers', default=3, type=int,
+                        help="number of transformer layers")
+arg_parser.add_argument('--mask_size', default=50, type=int,
+                        help="numer of nearby visible tokens for one token")
+arg_parser.add_argument('--dropout', default=0.3, type=float,
+                        help="model dropout")
 
-arg_parser.add_argument('--lr', default=1e5, type=float)
-arg_parser.add_argument('--weight_decay', default=0.01, type=float)
+arg_parser.add_argument('--lr', default=1e5, type=float, help="optimizer lr")
+arg_parser.add_argument('--weight_decay', default=0.01, type=float,
+                        help="optimizer l2 norm weight")
 
 arg_parser.add_argument('--data', type=str)
-arg_parser.add_argument('--dataset', type=str)
-arg_parser.add_argument('--batch_size', default=1, type=int)
-arg_parser.add_argument('--max_epoch', default=200, type=int)
+arg_parser.add_argument('--ex_dataset', type=str, default="tvsum",
+                        help="experimenting dataset")
+arg_parser.add_argument('--datasets', type=str, help="datasets to load")
+arg_parser.add_argument('--batch_size', default=1, type=int,
+                        help="mini batch size")
+arg_parser.add_argument('--max_epoch', default=200, type=int,
+                        help="number of training epochs")
 arg_parser.add_argument("--name", default="", type=str,
                         help="wandb experiment name")
 arg_parser.add_argument("--use_model", action="store_true",
