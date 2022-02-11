@@ -1,4 +1,5 @@
 import logging
+import math
 
 import torch
 from torch import nn, Tensor
@@ -21,12 +22,11 @@ class TLOST(nn.Module):
         self.in_features = 1024
         self.device = device
 
-        self.pos_enc = PositionalEncoding(
-            self.max_len, self.d_model)
-
         self.sum_tokens = nn.Parameter(torch.zeros(self.num_sumtokens, self.d_model))
 
-        self.first_layer = nn.Linear(self.in_features, self.d_model)
+        self.embedding_layer = Embedding(
+            in_features=self.in_features, d_model=self.d_model,
+            use_pos=True, sparsity=0.5)
 
         self.encoder = Encoder(heads, self.d_model, self.layers, dropout)
         self.decoder = Decoder(heads, self.d_model, self.layers, dropout)
@@ -48,13 +48,12 @@ class TLOST(nn.Module):
         return mask.type(torch.bool)
 
     def forward(self, x):
-        x = self.first_layer(x)
-        pe_x = x + self.pos_enc()[:x.size(1), :]
+        x = self.embedding_layer(x)
 
         bs, n, _ = x.size()
         assert self.mask_size < x.size(1)
         local_mask = self.create_local_mask(n, self.mask_size)
-        mem = self.encoder(pe_x, local_mask)
+        mem = self.encoder(x, local_mask)
         # sum tokens
         token_expand = (n // self.num_sumtokens) + 1
         sum_toks = self.sum_tokens.view(self.num_sumtokens, 1, -1) \
@@ -217,24 +216,56 @@ class MHA(nn.Module):
         return out, att_weights
 
 
-class PositionalEncoding(nn.Module):
-    def __init__(self, max_len, d_model):
-        super().__init__()
-        # pos is the position
-        pos = torch.arange(max_len).unsqueeze(dim=1)
-        # i is the dimension
-        i = torch.arange(d_model)
+class Embedding(nn.Module):
+    def __init__(self, in_features, d_model: int = 512,
+                 max_len: int = 2000, sparsity: float = 0.5,
+                 use_cls: bool = False, use_pos: bool = True):
+        super(Embedding, self).__init__()
+        # model info
+        self.in_features = in_features
         self.d_model = d_model
-        # for each dimension of d_model compute angle
-        angle = 10000 ** (2 * (i / 2) / self.d_model)
-        encoding = pos / angle
+        self.max_len = max_len
+        self.use_cls = use_cls
+        self.use_pos = use_pos
 
-        # sin for even dims: 2i
-        encoding[:, 0::2] = torch.sin(encoding[:, 0::2])
-        # cos for odd dims: 2i+1
-        encoding[:, 1::2] = torch.cos(encoding[:, 1::2])
+        # model layers
+        self.feature_transform = nn.Linear(in_features, d_model)
+        if use_pos:
+            self.positional_encoding = PositionalEncoding(emb_size=d_model,
+                                                          maxlen=max_len,
+                                                          dropout=sparsity)
+        # cls token
+        if use_cls:
+            self.cls_token = nn.Parameter(torch.zeros((1, 1, d_model)))
 
-        self.register_buffer('encoding', encoding)
+    def forward(self, x: Tensor):
+        batch_size = x.size()[0]
 
-    def forward(self):
-        return self.encoding
+        x = self.feature_transform(x)
+        if self.use_pos:
+            x = self.positional_encoding(x)
+        if self.use_cls:
+            cls_token = self.cls_token.expand((batch_size, 1, self.d_model))
+            x = torch.cat([cls_token, x], dim=1)
+        return x
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self,
+                 emb_size: int,
+                 dropout: float,
+                 maxlen: int = 2500):
+        super(PositionalEncoding, self).__init__()
+        angle = torch.exp(- torch.arange(0, emb_size, 2)
+                          * math.log(10000) / emb_size)
+        pos = torch.arange(0, maxlen).reshape(maxlen, 1)
+        pos_embedding = torch.zeros((maxlen, emb_size))
+        pos_embedding[:, 0::2] = torch.sin(pos * angle)
+        pos_embedding[:, 1::2] = torch.cos(pos * angle)
+        pos_embedding = pos_embedding.unsqueeze(0)
+        self.dropout = nn.Dropout(dropout)
+        self.register_buffer('pos_embedding', pos_embedding)
+
+    def forward(self, token_embedding: Tensor):
+        return self.dropout(token_embedding
+                            + self.pos_embedding[:, :token_embedding.size()[1]])
