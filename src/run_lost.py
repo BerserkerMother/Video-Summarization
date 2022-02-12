@@ -141,8 +141,7 @@ def train_step(model, optim, ft_train_loader, scaler, device):
         target = target.to(device)
 
         with amp.autocast():
-            pred = model(feature).squeeze(dim=-1)
-            pred = torch.sigmoid(pred)
+            pred = model(feature)
             loss = model.criterian(pred, target)
 
         optim.zero_grad()
@@ -164,8 +163,7 @@ def val_step(model, ft_test_loader, device):
         feature = feature.to(device)
         target = target.to(device)
 
-        pred = model(feature).squeeze(dim=-1)
-        pred = torch.sigmoid(pred)
+        pred = model(feature)
         loss = model.criterian(pred, target)
 
         loss_avg.update(loss.item(), 1)
