@@ -26,7 +26,7 @@ class TLOST(nn.Module):
 
         self.embedding_layer = Embedding(
             in_features=self.in_features, d_model=self.d_model,
-            use_pos=True, sparsity=0.5)
+            use_pos=True, sparsity=0.0, use_cls=True)
 
         self.encoder = Encoder(heads, self.d_model, self.layers, dropout)
         self.decoder = Decoder(heads, self.d_model, self.layers, dropout)
@@ -45,12 +45,14 @@ class TLOST(nn.Module):
             device=self.device)
         mask.index_fill_(0, idx, 0)
         mask.index_fill_(1, idx, 0)
-        return mask.type(torch.bool)
+        all_mask = torch.zeros((n + 1, n + 1), device=self.device)
+        all_mask[1:, 1:] = mask
+        return all_mask.type(torch.bool)
 
     def forward(self, x):
+        bs, n, _ = x.size()
         x = self.embedding_layer(x)
 
-        bs, n, _ = x.size()
         assert self.mask_size < x.size(1)
         local_mask = self.create_local_mask(n, self.mask_size)
         mem = self.encoder(x, local_mask)
@@ -63,9 +65,16 @@ class TLOST(nn.Module):
         sum_toks = sum_toks[:, :n, :]
         out = self.decoder(sum_toks, mem)
 
-        final_out = self.final_layer(out)
+        # similarity scores
+        tokens = mem[:, 1:]
+        cls_token = mem[:, 0].unsqueeze(1)
+        cos_sim = F.cosine_similarity(tokens, cls_token, dim=2)
+        cos_sim = cos_sim / cos_sim.max()
+        print(cos_sim)
 
-        return final_out
+        final_out = torch.sigmoid(self.final_layer(out)).squeeze(-1)
+
+        return final_out * cos_sim
 
 
 class Encoder(nn.Module):
