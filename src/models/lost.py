@@ -70,7 +70,6 @@ class TLOST(nn.Module):
         cls_token = mem[:, 0].unsqueeze(1)
         cos_sim = F.cosine_similarity(tokens, cls_token, dim=2)
         cos_sim = cos_sim / cos_sim.max()
-        print(cos_sim)
 
         final_out = torch.sigmoid(self.final_layer(out)).squeeze(-1)
 
