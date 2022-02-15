@@ -95,24 +95,24 @@ class EncoderBlock(nn.Module):
         self.d_model = d_model
         self.drop_rate = drop_rate
 
-        self.sa = MHA(heads, d_model)
+        self.sa = MultiAttentionNetwork(d_model=d_model,
+                                        attention_dim=d_model,
+                                        num_heads=heads,
+                                        dropout=drop_rate)
+        self.mlp = MLP(d_model=d_model, scale=4, dropout=drop_rate)
 
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
 
-        self.mlp = nn.Sequential(
-            nn.Linear(self.d_model, self.d_model * 2),
-            nn.ReLU(),
-            nn.Dropout(self.drop_rate),
-            nn.Linear(self.d_model * 2, self.d_model)
-        )
+        self.dropout1 = nn.Dropout(p=drop_rate)
+        self.dropout2 = nn.Dropout(p=drop_rate)
 
     def forward(self, x: Tensor, local_mask):
-        attented_x, w = self.sa(q=x, k=x, v=x, mask=local_mask)
-        z = self.norm1(attented_x + x)  # residual
+        attented_x = self.sa(x, x, mask=local_mask)
+        z = self.norm1(self.dropout1(attented_x) + x)  # residual
 
         mlp_out = self.mlp(z)
-        z2 = self.norm2(mlp_out + z)  # residual
+        z2 = self.norm2(self.dropout2(mlp_out) + z)  # residual
 
         return z2
 
@@ -144,76 +144,103 @@ class DecoderBlock(nn.Module):
         self.d_model = d_model
         self.drop_rate = drop_rate
 
-        self.sa = MHA(heads, d_model)
-        self.ca = MHA(heads, d_model)
+        self.sa = MultiAttentionNetwork(d_model=d_model,
+                                        attention_dim=d_model,
+                                        num_heads=heads,
+                                        dropout=drop_rate)
+
+        self.qa = MultiAttentionNetwork(d_model=d_model,
+                                        attention_dim=d_model,
+                                        num_heads=heads,
+                                        dropout=drop_rate)
+        self.mlp = MLP(d_model=d_model, scale=4, dropout=drop_rate)
 
         self.norm1 = nn.LayerNorm(d_model)
         self.norm2 = nn.LayerNorm(d_model)
         self.norm3 = nn.LayerNorm(d_model)
 
-        self.mlp = nn.Sequential(
-            nn.Linear(self.d_model, self.d_model * 2),
-            nn.ReLU(),
-            nn.Dropout(self.drop_rate),
-            nn.Linear(self.d_model * 2, self.d_model)
-        )
+        self.dropout1 = nn.Dropout(p=drop_rate)
+        self.dropout2 = nn.Dropout(p=drop_rate)
+        self.dropout3 = nn.Dropout(p=drop_rate)
 
     def forward(self, x: Tensor, mem: Tensor):
-        attented_x, w = self.sa(q=x, k=x, v=x, mask=None)
-        z = self.norm1(attented_x + x)  # residual
+        attented_x = self.sa(x, x, mask=None)
+        z = self.norm1(self.dropout1(attented_x) + x)  # residual
 
-        ca_x, w = self.ca(q=attented_x, k=mem, v=mem, mask=None)
-        z2 = self.norm2(ca_x + z)  # residual
+        ca_x = self.qa(z, mem, mask=None)
+        z2 = self.norm2(self.dropout2(ca_x) + z)  # residual
 
         mlp_out = self.mlp(z2)
-        z3 = self.norm3(mlp_out + z)  # residual
+        z3 = self.norm3(self.dropout3(mlp_out) + z2)  # residual
 
         return z3
 
 
-class MHA(nn.Module):
-    def __init__(self, heads=4, d_model=128):
-        super().__init__()
-        self.heads = heads
+class MultiAttentionNetwork(nn.Module):
+    def __init__(self, d_model, attention_dim, num_heads=8, dropout=0.2):
+        super(MultiAttentionNetwork, self).__init__()
+        # module parameters
         self.d_model = d_model
-        assert self.d_model % self.heads == 0
-        self.d_k = self.d_model // self.heads
+        self.attention_dim = attention_dim
+        assert attention_dim % num_heads == 0
+        self.head_dim = self.attention_dim // num_heads
+        self.num_heads = num_heads
+        self.scale = d_model ** -0.5
 
-        self.q = nn.Linear(self.d_model, self.d_k * self.heads)
-        self.k = nn.Linear(self.d_model, self.d_k * self.heads)
-        self.v = nn.Linear(self.d_model, self.d_k * self.heads)
+        # module layers
+        # q k v layers
+        self.q = nn.Linear(d_model, attention_dim)
+        self.k = nn.Linear(d_model, attention_dim)
+        self.v = nn.Linear(d_model, attention_dim)
+        self.dropout = nn.Dropout(p=dropout)
 
-        self.drop_out = nn.Dropout(0.2)
+        # self attention projection layer
+        self.feature_projection = nn.Linear(attention_dim, d_model)
 
-        self.out_proj = nn.Linear(self.d_k * self.heads, self.d_model)
+    def forward(self, x, y, mask):
+        """
+        :param x: query seq (batch_size, N, d_model)
+        :param y: key, value seq
+        :param mask: attention mask
+        :return:
+        """
+        batch_size, N, _ = x.size()
+        _, M, _ = y.size()
 
-    def _scaled_dot_product(self, q, k, mask=None):
-        scaled_dp = (q @ k.transpose(-1, -2)) / self.d_k ** 0.5
-        if mask is not None:
-            scaled_dp.masked_fill_(mask, float("-inf"))
+        q = self.q(x).view(batch_size, N, self.num_heads, -1) \
+            .permute(0, 2, 1, 3)
+        k = self.k(y).view(batch_size, M, self.num_heads, -1) \
+            .permute(0, 2, 1, 3)
+        v = self.v(y).view(batch_size, M, self.num_heads, -1) \
+            .permute(0, 2, 1, 3)
 
-        return scaled_dp
+        attention_score = torch.matmul(q, k.transpose(2, 3)) * self.scale
+        if isinstance(mask, Tensor):
+            attention_score = attention_score.masked_fill(mask, float("-inf"))
+        attention_weight = F.softmax(attention_score, dim=3)
+        attention_weight = self.dropout(attention_weight)
+        attention_output = torch.matmul(attention_weight, v). \
+            permute(0, 2, 1, 3).contiguous().view(batch_size, N, -1)
 
-    def _split_heads(self, x):
-        bs, n, h_dk = x.shape
-        new_size = (bs, self.heads, n, self.d_k)
-        return x.view(*new_size)
+        attention_output = self.feature_projection(attention_output)
+        return attention_output
 
-    def _out_proj(self, x):
-        bs, split, n, dim = x.shape
-        return x.view(bs, n, -1)
 
-    def forward(self, q: Tensor, k: Tensor, v: Tensor, mask=None):
-        query = self._split_heads(self.q(q))
-        key = self._split_heads(self.k(k))
-        value = self._split_heads(self.v(v))
+class MLP(nn.Module):
+    def __init__(self, d_model, scale=4, dropout=0.2):
+        super(MLP, self).__init__()
+        # module parameters
+        self.d_model = d_model
+        self.scale = scale
 
-        alignment_score = self._scaled_dot_product(query, key, mask)
-        att_weights = self.drop_out(F.softmax(alignment_score, dim=-1))
+        # module layers
+        self.fc1 = nn.Linear(d_model, scale * d_model)
+        self.fc2 = nn.Linear(scale * d_model, d_model)
 
-        out = self._out_proj(att_weights @ value)
-
-        return out, att_weights
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
 
 
 class Embedding(nn.Module):
