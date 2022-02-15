@@ -45,7 +45,8 @@ class TLOST(nn.Module):
             device=self.device)
         mask.index_fill_(0, idx, 0)
         mask.index_fill_(1, idx, 0)
-        all_mask = torch.zeros((n + 1, n + 1), device=self.device)
+        all_mask = torch.ones((n + 1, n + 1), device=self.device)
+        all_mask.index_fill_(0, torch.tensor([0], device=self.device), 0)
         all_mask[1:, 1:] = mask
         return all_mask.type(torch.bool)
 
@@ -63,11 +64,13 @@ class TLOST(nn.Module):
         sum_toks = sum_toks.contiguous().view(1, -1, self.d_model). \
             expand(bs, self.num_sumtokens * token_expand, self.d_model)
         sum_toks = sum_toks[:, :n, :]
-        out = self.decoder(sum_toks, mem)
 
-        # similarity scores
         tokens = mem[:, 1:]
         cls_token = mem[:, 0].unsqueeze(1)
+
+        out = self.decoder(sum_toks, tokens)
+
+        # similarity scores
         cos_sim = F.cosine_similarity(tokens, cls_token, dim=2)
         cos_sim = cos_sim / cos_sim.max()
 
