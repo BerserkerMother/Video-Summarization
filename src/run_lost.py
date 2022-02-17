@@ -5,6 +5,7 @@ import logging
 import os
 
 import torch
+import torch.nn.functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.cuda import amp
@@ -142,7 +143,7 @@ def train_step(model, optim, ft_train_loader, scaler, device):
 
         with amp.autocast():
             pred = model(feature)
-            loss = model.criterian(pred, target)
+            loss = F.mse_loss(pred, target)
 
         optim.zero_grad()
         scaler.scale(loss).backward()
@@ -164,7 +165,7 @@ def val_step(model, ft_test_loader, device):
         target = target.to(device)
 
         pred = model(feature)
-        loss = model.criterian(pred, target)
+        loss = F.mse_loss(pred, target)
 
         loss_avg.update(loss.item(), 1)
         score_dict[user.name] = pred.squeeze(0).detach().cpu().numpy()
@@ -172,6 +173,19 @@ def val_step(model, ft_test_loader, device):
     f_score, ktau, spr = eval_metrics(score_dict, user_dict)
 
     return loss_avg.avg(), f_score, ktau, spr
+
+
+@torch.no_grad()
+def save_attention_weights(model, ft_train_loader, device):
+    model.eval()
+    attention_weights_all = {}
+    for i, (feature, target, user) in enumerate(ft_train_loader):
+        feature = feature.to(device)
+
+        pred, attn_weights = model(feature, True)
+        attention_weights_all[user.name] = attn_weights
+
+    torch.save(attention_weights_all, "weights.pth")
 
 
 arg_parser = argparse.ArgumentParser('LOST')

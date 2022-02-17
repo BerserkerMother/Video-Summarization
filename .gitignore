@@ -3,6 +3,7 @@
 .vscode
 **/wandb/
 
+**.ipynb_checkpoints
 **__pycache__
 **.json
 **.tar*

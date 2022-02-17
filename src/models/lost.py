@@ -11,30 +11,28 @@ class TLOST(nn.Module):
     Transformer-with-LOcal-attention-and-SumToken!! (TLOST)
     """
 
-    def __init__(self, heads, d_model, num_sumtokens, layers, mask_size, dropout, max_len, device):
-        super().__init__()
+    def __init__(self, heads, d_model, num_sem, layers, mask_size, dropout, max_len, device):
+        super(TLOST, self).__init__()
         self.heads = heads
         self.d_model = d_model
-        self.num_sumtokens = num_sumtokens
+        self.num_sem = num_sem
         self.layers = layers
         self.max_len = max_len
         self.mask_size = mask_size
         self.in_features = 1024
         self.device = device
 
-        self.sum_tokens = nn.Parameter(torch.zeros(self.num_sumtokens, self.d_model))
+        self.semantic_tokens = nn.Parameter(
+            torch.randn((1, self.num_sem, self.d_model)))
 
         self.embedding_layer = Embedding(
             in_features=self.in_features, d_model=self.d_model,
-            use_pos=True, sparsity=0.0, use_cls=True)
+            use_pos=True, sparsity=0.0, use_cls=False)
 
         self.encoder = Encoder(heads, self.d_model, self.layers, dropout)
         self.decoder = Decoder(heads, self.d_model, self.layers, dropout)
 
         self.final_layer = nn.Linear(self.d_model, 1)
-
-    def criterian(self, pred, true):
-        return F.mse_loss(pred, true)
 
     def create_local_mask(self, n, size):
         mask1 = torch.ones((n, n), device=self.device).triu(diagonal=size)
@@ -45,10 +43,7 @@ class TLOST(nn.Module):
             device=self.device)
         mask.index_fill_(0, idx, 0)
         mask.index_fill_(1, idx, 0)
-        all_mask = torch.ones((n + 1, n + 1), device=self.device)
-        all_mask.index_fill_(0, torch.tensor([0], device=self.device), 0)
-        all_mask[1:, 1:] = mask
-        return all_mask.type(torch.bool)
+        return mask.type(torch.bool)
 
     def forward(self, x):
         bs, n, _ = x.size()
@@ -56,32 +51,21 @@ class TLOST(nn.Module):
 
         assert self.mask_size < x.size(1)
         local_mask = self.create_local_mask(n, self.mask_size)
-        mem = self.encoder(x, local_mask)
-        # sum tokens
-        token_expand = (n // self.num_sumtokens) + 1
-        sum_toks = self.sum_tokens.view(self.num_sumtokens, 1, -1) \
-            .expand(self.num_sumtokens, token_expand, self.d_model)
-        sum_toks = sum_toks.contiguous().view(1, -1, self.d_model). \
-            expand(bs, self.num_sumtokens * token_expand, self.d_model)
-        sum_toks = sum_toks[:, :n, :]
+        mem = self.encoder(x, local_mask=local_mask)
 
-        tokens = mem[:, 1:]
-        cls_token = mem[:, 0].unsqueeze(1)
+        # semantic tokens
+        sem_token = self.semantic_tokens.expand(
+            bs, self.num_sem, self.d_model)
+        out = self.decoder(sem_token, mem)
 
-        out = self.decoder(sum_toks, tokens)
+        final_out = self.final_layer(mem).view(bs, -1)
 
-        # similarity scores
-        cos_sim = F.cosine_similarity(tokens, cls_token, dim=2)
-        cos_sim = cos_sim / cos_sim.max()
-
-        final_out = torch.sigmoid(self.final_layer(out)).squeeze(-1)
-
-        return final_out * cos_sim
+        return torch.sigmoid(final_out)
 
 
 class Encoder(nn.Module):
     def __init__(self, heads, d_model, enc_layers, dropout):
-        super().__init__()
+        super(Encoder, self).__init__()
         self.heads = heads
         self.d_model = d_model
         self.enc_layers = enc_layers
@@ -101,7 +85,7 @@ class Encoder(nn.Module):
 
 class EncoderBlock(nn.Module):
     def __init__(self, heads, d_model, drop_rate=0.3):
-        super().__init__()
+        super(EncoderBlock, self).__init__()
         self.heads = heads
         self.d_model = d_model
         self.drop_rate = drop_rate
@@ -119,18 +103,18 @@ class EncoderBlock(nn.Module):
         self.dropout2 = nn.Dropout(p=drop_rate)
 
     def forward(self, x: Tensor, local_mask):
-        attented_x = self.sa(x, x, mask=local_mask)
-        z = self.norm1(self.dropout1(attented_x) + x)  # residual
+        x1 = self.sa(x, x, mask=local_mask)
+        x = self.norm1(self.dropout1(x1) + x)  # residual
 
-        mlp_out = self.mlp(z)
-        z2 = self.norm2(self.dropout2(mlp_out) + z)  # residual
+        x1 = self.mlp(x)
+        x = self.norm2(self.dropout2(x1) + x)  # residual
 
-        return z2
+        return x
 
 
 class Decoder(nn.Module):
     def __init__(self, heads, d_model, dec_layers, dropout):
-        super().__init__()
+        super(Decoder, self).__init__()
         self.heads = heads
         self.d_model = d_model
         self.dec_layers = dec_layers
@@ -150,7 +134,7 @@ class Decoder(nn.Module):
 
 class DecoderBlock(nn.Module):
     def __init__(self, heads, d_model, drop_rate=0.3):
-        super().__init__()
+        super(DecoderBlock, self).__init__()
         self.heads = heads
         self.d_model = d_model
         self.drop_rate = drop_rate
@@ -175,16 +159,16 @@ class DecoderBlock(nn.Module):
         self.dropout3 = nn.Dropout(p=drop_rate)
 
     def forward(self, x: Tensor, mem: Tensor):
-        attented_x = self.sa(x, x, mask=None)
-        z = self.norm1(self.dropout1(attented_x) + x)  # residual
+        x1 = self.sa(x, x, mask=None)
+        x = self.norm1(self.dropout1(x1) + x)  # residual
 
-        ca_x = self.qa(z, mem, mask=None)
-        z2 = self.norm2(self.dropout2(ca_x) + z)  # residual
+        x1 = self.qa(x, mem, mask=None)
+        x = self.norm2(self.dropout2(x1) + x)  # residual
 
-        mlp_out = self.mlp(z2)
-        z3 = self.norm3(self.dropout3(mlp_out) + z2)  # residual
+        x1 = self.mlp(x)
+        x = self.norm3(self.dropout3(x1) + x)  # residual
 
-        return z3
+        return x
 
 
 class MultiAttentionNetwork(nn.Module):
