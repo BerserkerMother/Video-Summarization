@@ -32,6 +32,13 @@ class TLOST(nn.Module):
         self.encoder = Encoder(heads, self.d_model, self.layers, dropout)
         self.decoder = Decoder(heads, self.d_model, self.layers, dropout)
 
+        # semantic mixer
+        self.mixer = MultiAttentionNetwork(d_model=d_model,
+                                           attention_dim=d_model,
+                                           num_heads=heads,
+                                           dropout=dropout)
+        self.norm1 = nn.LayerNorm(d_model)
+
         self.final_layer = nn.Linear(self.d_model, 1)
 
     def create_local_mask(self, n, size):
@@ -61,12 +68,21 @@ class TLOST(nn.Module):
         if vis_attention:
             mem = self.encoder(x, local_mask, attention_maps)
             out = self.decoder(sem_token, mem, attention_maps)
-            final_out = self.final_layer(mem).view(bs, -1)
+            # mix semantic
+            semantic_out, attn = self.mixer(mem, out)
+            semantic_out = self.norm1(semantic_out)
+            final_out = semantic_out + mem
+            final_out = self.final_layer(final_out).view(bs, -1)
+            attention_maps.append(attn)
             return torch.sigmoid(final_out), attention_maps
         else:
             mem = self.encoder(x, local_mask)
             out = self.decoder(sem_token, mem)
-            final_out = self.final_layer(mem).view(bs, -1)
+            # mix semantic
+            semantic_out, _ = self.mixer(mem, out)
+            semantic_out = self.norm1(semantic_out)
+            final_out = semantic_out + mem
+            final_out = self.final_layer(final_out).view(bs, -1)
             return torch.sigmoid(final_out)
 
 
@@ -204,7 +220,7 @@ class MultiAttentionNetwork(nn.Module):
         # self attention projection layer
         self.feature_projection = nn.Linear(attention_dim, d_model)
 
-    def forward(self, x, y, mask):
+    def forward(self, x, y, mask=None):
         """
         :param x: query seq (batch_size, N, d_model)
         :param y: key, value seq
