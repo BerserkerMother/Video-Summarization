@@ -45,22 +45,29 @@ class TLOST(nn.Module):
         mask.index_fill_(1, idx, 0)
         return mask.type(torch.bool)
 
-    def forward(self, x):
+    def forward(self, x, vis_attention=False):
         bs, n, _ = x.size()
         x = self.embedding_layer(x)
 
         assert self.mask_size < x.size(1)
-        local_mask = self.create_local_mask(n, self.mask_size)
-        mem = self.encoder(x, local_mask=local_mask)
-
         # semantic tokens
         sem_token = self.semantic_tokens.expand(
             bs, self.num_sem, self.d_model)
-        out = self.decoder(sem_token, mem)
 
-        final_out = self.final_layer(mem).view(bs, -1)
+        local_mask = self.create_local_mask(n, self.mask_size)
 
-        return torch.sigmoid(final_out)
+        # save attention maps
+        attention_maps = []
+        if vis_attention:
+            mem = self.encoder(x, local_mask, attention_maps)
+            out = self.decoder(sem_token, mem, attention_maps)
+            final_out = self.final_layer(mem).view(bs, -1)
+            return torch.sigmoid(final_out), attention_maps
+        else:
+            mem = self.encoder(x, local_mask)
+            out = self.decoder(sem_token, mem)
+            final_out = self.final_layer(mem).view(bs, -1)
+            return torch.sigmoid(final_out)
 
 
 class Encoder(nn.Module):
@@ -76,9 +83,9 @@ class Encoder(nn.Module):
                 EncoderBlock(heads=self.heads, d_model=self.d_model, drop_rate=dropout))
         self.module_list = nn.ModuleList(modules)
 
-    def forward(self, x: Tensor, local_mask):
+    def forward(self, x: Tensor, local_mask, attention_maps=None):
         for block in self.module_list:
-            x = block(x, local_mask)
+            x = block(x, local_mask, attention_maps)
 
         return x
 
@@ -102,13 +109,15 @@ class EncoderBlock(nn.Module):
         self.dropout1 = nn.Dropout(p=drop_rate)
         self.dropout2 = nn.Dropout(p=drop_rate)
 
-    def forward(self, x: Tensor, local_mask):
-        x1 = self.sa(x, x, mask=local_mask)
+    def forward(self, x: Tensor, local_mask, attention_maps):
+        x1, attn = self.sa(x, x, mask=local_mask)
         x = self.norm1(self.dropout1(x1) + x)  # residual
 
         x1 = self.mlp(x)
         x = self.norm2(self.dropout2(x1) + x)  # residual
 
+        if isinstance(attention_maps, list):
+            attention_maps.append(attn)
         return x
 
 
@@ -125,9 +134,9 @@ class Decoder(nn.Module):
                 DecoderBlock(heads=self.heads, d_model=self.d_model, drop_rate=dropout))
         self.module_list = nn.ModuleList(modules)
 
-    def forward(self, x: Tensor, mem):
+    def forward(self, x: Tensor, mem, attention_maps=None):
         for block in self.module_list:
-            x = block(x, mem)
+            x = block(x, mem, attention_maps)
 
         return x
 
@@ -158,16 +167,19 @@ class DecoderBlock(nn.Module):
         self.dropout2 = nn.Dropout(p=drop_rate)
         self.dropout3 = nn.Dropout(p=drop_rate)
 
-    def forward(self, x: Tensor, mem: Tensor):
-        x1 = self.sa(x, x, mask=None)
+    def forward(self, x: Tensor, mem: Tensor, attention_maps):
+        x1, attn1 = self.sa(x, x, mask=None)
         x = self.norm1(self.dropout1(x1) + x)  # residual
 
-        x1 = self.qa(x, mem, mask=None)
+        x1, attn2 = self.qa(x, mem, mask=None)
         x = self.norm2(self.dropout2(x1) + x)  # residual
 
         x1 = self.mlp(x)
         x = self.norm3(self.dropout3(x1) + x)  # residual
 
+        if isinstance(attention_maps, list):
+            attention_maps.append(attn1)
+            attention_maps.append(attn2)
         return x
 
 
@@ -218,7 +230,7 @@ class MultiAttentionNetwork(nn.Module):
             permute(0, 2, 1, 3).contiguous().view(batch_size, N, -1)
 
         attention_output = self.feature_projection(attention_output)
-        return attention_output
+        return attention_output, attention_weight.detach().cpu()
 
 
 class MLP(nn.Module):

@@ -28,6 +28,8 @@ def main(args, splits):
                    name=args.__str__()[10:-1], config=args, reinit=True)
         wandb.config.seed = 34123312
         logging.info(f"\nSplit {split_idx + 1}")
+
+        # define model
         model = TLOST(args.heads, args.d_model, args.num_sumtokens, args.layers,
                       args.mask_size, args.dropout, max_len=10000, device=device)
         optim = Adam(model.parameters(), lr=args.lr,
