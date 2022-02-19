@@ -18,7 +18,9 @@ def main(args):
         dataset=dataset,
         shuffle=True,
         batch_size=args.batch_size,
-        collate_fn=collate_fn_pretrain
+        collate_fn=collate_fn_pretrain,
+        num_workers=4,
+        drop_last=True
     )
     logging.info("number of videos: %d" % len(dataset))
 
