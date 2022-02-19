@@ -11,8 +11,6 @@ from .path import PATH
 
 
 # Dataset Implementation for DS-net TVsum & SumMe
-
-
 class TSDataset(Dataset):
     def __init__(self, root, ex_dataset, datasets,
                  key=None, split: str = "train"):
@@ -92,23 +90,20 @@ class PreTrainDataset(Dataset):
 
         self.data = []
         self.target = []
-        self.name = []
         self.datasets = datasets.split("+")
         for dataset in self.datasets:
             with h5py.File(os.path.join(root, PATH[dataset]), 'r') as f:
                 for key in f.keys():
                     self.data.append(f[key]['features']
                                      [...].astype(np.float32))
-                    self.name.append(key)
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
         features = torch.tensor(self.data[idx])
-        vid_name = self.name[idx]
 
-        return features, vid_name
+        return features
 
 
 class UserSummaries:
@@ -120,6 +115,12 @@ class UserSummaries:
         self.n_frames = n_frames
         self.picks = picks
         self.name = name
+
+
+def collate_fn_pretrain(batch):
+    features = batch
+    features = pad_sequence(features, batch_first=True, padding_value=1000)
+    return features
 
 
 def collate_fn(batch):

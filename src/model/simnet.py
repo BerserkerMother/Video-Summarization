@@ -8,26 +8,24 @@ import torch.nn.functional as F
 
 class SimNet(nn.Module):
 
-    def __init__(self, heads, d_model, num_sem, layers, mask_size, dropout, max_len, device):
+    def __init__(self, num_heads, d_model, layers, sparsity, use_cls, dropout,
+                 max_len, num_classes):
         super(SimNet, self).__init__()
-        self.heads = heads
+        self.num_heads = num_heads
         self.d_model = d_model
-        self.num_sem = num_sem
         self.layers = layers
+        self.sparsity = sparsity
+        self.use_cls = use_cls
         self.max_len = max_len
-        self.mask_size = mask_size
+        self.num_classes = num_classes
         self.in_features = 1024
-        self.device = device
-
-        self.semantic_tokens = nn.Parameter(
-            torch.randn((1, self.num_sem, self.d_model)))
 
         self.embedding_layer = Embedding(
             in_features=self.in_features, d_model=self.d_model,
-            use_pos=True, sparsity=0.0, use_cls=False)
+            use_pos=True, sparsity=sparsity, use_cls=use_cls)
 
-        self.encoder = Encoder(heads, self.d_model, self.layers, dropout)
-        self.final_layer = nn.Linear(self.d_model, 1)
+        self.encoder = Encoder(num_heads, self.d_model, self.layers, dropout)
+        self.final_layer = nn.Linear(self.d_model, num_classes)
 
     def forward(self, x, vis_attention=False):
         bs, n, _ = x.size()
@@ -44,37 +42,44 @@ class SimNet(nn.Module):
             final_out = self.final_layer(out).view(bs, -1)
             return torch.sigmoid(final_out)
 
+    def process_mask(self, mask):
+
+        batch_size, N = mask.size()
+        mask = mask.view(batch_size, 1, 1, N)
+        mask = mask.expand(batch_size, self.num_heads, N, N)
+
+        return mask
+
 
 class Encoder(nn.Module):
-    def __init__(self, heads, d_model, enc_layers, dropout):
+    def __init__(self, num_heads, d_model, enc_layers, dropout):
         super(Encoder, self).__init__()
-        self.heads = heads
+        self.num_heads = num_heads
         self.d_model = d_model
         self.enc_layers = enc_layers
 
         modules = []
         for _ in range(self.enc_layers):
             modules.append(
-                EncoderBlock(heads=self.heads, d_model=self.d_model, drop_rate=dropout))
+                EncoderBlock(num_heads=self.num_heads, d_model=self.d_model, drop_rate=dropout))
         self.module_list = nn.ModuleList(modules)
 
     def forward(self, x: Tensor, mask=None, attention_maps=None):
         for block in self.module_list:
             x = block(x, mask, attention_maps)
-
         return x
 
 
 class EncoderBlock(nn.Module):
-    def __init__(self, heads, d_model, drop_rate=0.3):
+    def __init__(self, num_heads, d_model, drop_rate=0.3):
         super(EncoderBlock, self).__init__()
-        self.heads = heads
+        self.num_heads = num_heads
         self.d_model = d_model
         self.drop_rate = drop_rate
 
         self.sa = MultiAttentionNetwork(d_model=d_model,
                                         attention_dim=d_model,
-                                        num_heads=heads,
+                                        num_heads=num_heads,
                                         dropout=drop_rate)
         self.mlp = MLP(d_model=d_model, scale=4, dropout=drop_rate)
 
