@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.cuda import amp
-from models import TLOST
+from models import SimNet
 
 from utils import set_seed, AverageMeter, load_json, load_yaml
 from evaluation.compute_metrics import eval_metrics
@@ -30,8 +30,8 @@ def main(args, splits):
         logging.info(f"\nSplit {split_idx + 1}")
 
         # define model
-        model = TLOST(args.heads, args.d_model, args.num_sumtokens, args.layers,
-                      args.mask_size, args.dropout, max_len=10000, device=device)
+        model = SimNet(args.heads, args.d_model, args.num_sumtokens, args.layers,
+                       args.mask_size, args.dropout, max_len=10000, device=device)
         optim = Adam(model.parameters(), lr=args.lr,
                      weight_decay=args.weight_decay)
 

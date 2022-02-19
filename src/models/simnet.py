@@ -6,13 +6,10 @@ from torch import nn, Tensor
 import torch.nn.functional as F
 
 
-class TLOST(nn.Module):
-    """
-    Transformer-with-LOcal-attention-and-SumToken!! (TLOST)
-    """
+class SimNet(nn.Module):
 
     def __init__(self, heads, d_model, num_sem, layers, mask_size, dropout, max_len, device):
-        super(TLOST, self).__init__()
+        super(SimNet, self).__init__()
         self.heads = heads
         self.d_model = d_model
         self.num_sem = num_sem
@@ -30,59 +27,21 @@ class TLOST(nn.Module):
             use_pos=True, sparsity=0.0, use_cls=False)
 
         self.encoder = Encoder(heads, self.d_model, self.layers, dropout)
-        self.decoder = Decoder(heads, self.d_model, self.layers, dropout)
-
-        # semantic mixer
-        self.mixer = MultiAttentionNetwork(d_model=d_model,
-                                           attention_dim=d_model,
-                                           num_heads=heads,
-                                           dropout=dropout)
-        self.norm1 = nn.LayerNorm(d_model)
-
         self.final_layer = nn.Linear(self.d_model, 1)
-
-    def create_local_mask(self, n, size):
-        mask1 = torch.ones((n, n), device=self.device).triu(diagonal=size)
-        mask2 = torch.ones((n, n), device=self.device).tril(diagonal=-size)
-        mask = mask1 + mask2
-        idx = torch.tensor(
-            [0, int(0.2 * n), int(0.4 * n), int(0.6 * n), int(0.8 * n), n - 1],
-            device=self.device)
-        mask.index_fill_(0, idx, 0)
-        mask.index_fill_(1, idx, 0)
-        return mask.type(torch.bool)
 
     def forward(self, x, vis_attention=False):
         bs, n, _ = x.size()
         x = self.embedding_layer(x)
 
-        assert self.mask_size < x.size(1)
-        # semantic tokens
-        sem_token = self.semantic_tokens.expand(
-            bs, self.num_sem, self.d_model)
-
-        local_mask = self.create_local_mask(n, self.mask_size)
-
         # save attention maps
         attention_maps = []
         if vis_attention:
-            mem = self.encoder(x, local_mask, attention_maps)
-            out = self.decoder(sem_token, mem, attention_maps)
-            # mix semantic
-            semantic_out, attn = self.mixer(mem, out)
-            semantic_out = self.norm1(semantic_out)
-            final_out = semantic_out + mem
-            final_out = self.final_layer(final_out).view(bs, -1)
-            attention_maps.append(attn)
+            out = self.encoder(x, attention_maps)
+            final_out = self.final_layer(out).view(bs, -1)
             return torch.sigmoid(final_out), attention_maps
         else:
-            mem = self.encoder(x, local_mask)
-            out = self.decoder(sem_token, mem)
-            # mix semantic
-            semantic_out, _ = self.mixer(mem, out)
-            semantic_out = self.norm1(semantic_out)
-            final_out = semantic_out + mem
-            final_out = self.final_layer(final_out).view(bs, -1)
+            out = self.encoder(x)
+            final_out = self.final_layer(out).view(bs, -1)
             return torch.sigmoid(final_out)
 
 
@@ -99,9 +58,9 @@ class Encoder(nn.Module):
                 EncoderBlock(heads=self.heads, d_model=self.d_model, drop_rate=dropout))
         self.module_list = nn.ModuleList(modules)
 
-    def forward(self, x: Tensor, local_mask, attention_maps=None):
+    def forward(self, x: Tensor, mask=None, attention_maps=None):
         for block in self.module_list:
-            x = block(x, local_mask, attention_maps)
+            x = block(x, mask, attention_maps)
 
         return x
 
@@ -125,8 +84,8 @@ class EncoderBlock(nn.Module):
         self.dropout1 = nn.Dropout(p=drop_rate)
         self.dropout2 = nn.Dropout(p=drop_rate)
 
-    def forward(self, x: Tensor, local_mask, attention_maps):
-        x1, attn = self.sa(x, x, mask=local_mask)
+    def forward(self, x: Tensor, mask, attention_maps):
+        x1, attn = self.sa(x, x, mask=mask)
         x = self.norm1(self.dropout1(x1) + x)  # residual
 
         x1 = self.mlp(x)
@@ -134,68 +93,6 @@ class EncoderBlock(nn.Module):
 
         if isinstance(attention_maps, list):
             attention_maps.append(attn)
-        return x
-
-
-class Decoder(nn.Module):
-    def __init__(self, heads, d_model, dec_layers, dropout):
-        super(Decoder, self).__init__()
-        self.heads = heads
-        self.d_model = d_model
-        self.dec_layers = dec_layers
-
-        modules = []
-        for _ in range(self.dec_layers):
-            modules.append(
-                DecoderBlock(heads=self.heads, d_model=self.d_model, drop_rate=dropout))
-        self.module_list = nn.ModuleList(modules)
-
-    def forward(self, x: Tensor, mem, attention_maps=None):
-        for block in self.module_list:
-            x = block(x, mem, attention_maps)
-
-        return x
-
-
-class DecoderBlock(nn.Module):
-    def __init__(self, heads, d_model, drop_rate=0.3):
-        super(DecoderBlock, self).__init__()
-        self.heads = heads
-        self.d_model = d_model
-        self.drop_rate = drop_rate
-
-        self.sa = MultiAttentionNetwork(d_model=d_model,
-                                        attention_dim=d_model,
-                                        num_heads=heads,
-                                        dropout=drop_rate)
-
-        self.qa = MultiAttentionNetwork(d_model=d_model,
-                                        attention_dim=d_model,
-                                        num_heads=heads,
-                                        dropout=drop_rate)
-        self.mlp = MLP(d_model=d_model, scale=4, dropout=drop_rate)
-
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.norm3 = nn.LayerNorm(d_model)
-
-        self.dropout1 = nn.Dropout(p=drop_rate)
-        self.dropout2 = nn.Dropout(p=drop_rate)
-        self.dropout3 = nn.Dropout(p=drop_rate)
-
-    def forward(self, x: Tensor, mem: Tensor, attention_maps):
-        x1, attn1 = self.sa(x, x, mask=None)
-        x = self.norm1(self.dropout1(x1) + x)  # residual
-
-        x1, attn2 = self.qa(x, mem, mask=None)
-        x = self.norm2(self.dropout2(x1) + x)  # residual
-
-        x1 = self.mlp(x)
-        x = self.norm3(self.dropout3(x1) + x)  # residual
-
-        if isinstance(attention_maps, list):
-            attention_maps.append(attn1)
-            attention_maps.append(attn2)
         return x
 
 
@@ -260,8 +157,10 @@ class MLP(nn.Module):
         self.fc1 = nn.Linear(d_model, scale * d_model)
         self.fc2 = nn.Linear(scale * d_model, d_model)
 
+        self.dropout = nn.Dropout(dropout)
+
     def forward(self, x):
-        x = F.relu(self.fc1(x))
+        x = self.dropout(F.relu(self.fc1(x)))
         x = self.fc2(x)
         return x
 

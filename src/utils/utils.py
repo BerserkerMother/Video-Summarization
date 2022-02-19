@@ -18,7 +18,7 @@ class AverageMeter:
         self.num = 0
 
     def update(self, val, num):
-        self.val += val * num
+        self.val += val
         self.num += num
 
     def avg(self):
