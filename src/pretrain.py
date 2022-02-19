@@ -25,7 +25,7 @@ def main(args):
     logging.info("number of videos: %d" % len(dataset))
 
     model = PretrainModel(d_model=args.d_model, num_heads=args.num_heads,
-                          num_layers=args.num_layers, sparsity=0.7,
+                          num_layers=args.num_layers, sparsity=args.sparsity,
                           dropout=args.dropout, num_classes=128,
                           use_pos=args.use_pos,
                           memory_size=args.memory_size).cuda()
@@ -65,8 +65,9 @@ def train(model, optimizer, scaler, loader, e):
         # logging
         temp_loss += loss.item()
         if ((i + 1) % 5) == 0:
-            train_loss.update(temp_loss, 5)
+            train_loss.update(temp_loss, 1)
             logging.info('Epoch %3d ,Step %d, loss: %f' % (e, i + 1, temp_loss))
+            print('_' * 100)
             temp_loss = 0
     return train_loss.avg()
 
@@ -92,6 +93,8 @@ arg_parser.add_argument('--num_heads', type=int, default=4,
                         help='number of attention heads')
 arg_parser.add_argument('--dropout', type=float, default=.2,
                         help='dropout probability')
+arg_parser.add_argument('--sparsity', type=float, default=0.5,
+                        help="control sparsity of model")
 arg_parser.add_argument('--memory_size', type=int, default=128,
                         help="length of memory")
 # optimizer

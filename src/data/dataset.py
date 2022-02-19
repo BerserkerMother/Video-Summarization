@@ -89,19 +89,18 @@ class PreTrainDataset(Dataset):
         self.root = root
 
         self.data = []
-        self.target = []
         self.datasets = datasets.split("+")
         for dataset in self.datasets:
             with h5py.File(os.path.join(root, PATH[dataset]), 'r') as f:
                 for key in f.keys():
-                    self.data.append(f[key]['features']
-                                     [...].astype(np.float32))
+                    data = torch.tensor(f[key]['features'][...].astype(np.float32))
+                    self.data.append(data)
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        features = torch.tensor(self.data[idx])
+        features = self.data[idx]
 
         return features
 
