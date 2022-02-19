@@ -40,8 +40,8 @@ def main(args):
     for epoch in range(args.epochs):
         train_loss = train(model, optimizer, scaler, train_loader, epoch)
         logging.info("Total Loss %f" % train_loss)
-    if args.save:
-        torch.save(model.encoder_main.parameters(), "pretrain.pth")
+        print('_' * 50)
+        torch.save(model.encoder_main.state_dict(), "pretrain.pth")
 
 
 def train(model, optimizer, scaler, loader, e):
@@ -67,7 +67,6 @@ def train(model, optimizer, scaler, loader, e):
         if ((i + 1) % 5) == 0:
             train_loss.update(temp_loss, 1)
             logging.info('Epoch %3d ,Step %d, loss: %f' % (e, i + 1, temp_loss))
-            print('_' * 100)
             temp_loss = 0
     return train_loss.avg()
 
