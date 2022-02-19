@@ -13,7 +13,7 @@ from model import SimNet
 
 from utils import set_seed, AverageMeter, load_json, load_yaml
 from evaluation.compute_metrics import eval_metrics
-from dataset import TSDataset, collate_fn
+from data import TSDataset, collate_fn
 
 
 def main(args, splits):
@@ -30,7 +30,7 @@ def main(args, splits):
         logging.info(f"\nSplit {split_idx + 1}")
 
         # define model
-        model = SimNet(args.num_heads, args.d_model, args.num_sumtokens, args.layers,
+        model = SimNet(args.num_heads, args.d_model, args.num_sumtokens, args.num_layers,
                        args.mask_size, args.dropout, max_len=5000, num_classes=1)
         optim = Adam(model.parameters(), lr=args.lr,
                      weight_decay=args.weight_decay)
@@ -211,7 +211,7 @@ arg_parser.add_argument('--weight_decay', default=0.01, type=float,
 
 arg_parser.add_argument('--data', type=str)
 arg_parser.add_argument('--ex_dataset', type=str, default="tvsum",
-                        help="experimenting dataset")
+                        help="experimenting data")
 arg_parser.add_argument('--datasets', type=str, help="datasets to load")
 arg_parser.add_argument('--batch_size', default=1, type=int,
                         help="mini batch size")

@@ -17,8 +17,8 @@ class TSDataset(Dataset):
         """
 
         :param root: path to *.h5 data folder
-        :param ex_dataset: dataset to benchmark on
-        :param datasets: dataset to use for training
+        :param ex_dataset: data to benchmark on
+        :param datasets: data to use for training
         :param key: specific splitting
         :param split: train or val split
         """
@@ -35,7 +35,7 @@ class TSDataset(Dataset):
         if split == "val":
             with h5py.File(os.path.join(root, PATH[ex_dataset]), 'r') as f:
                 # if split keys are given then it reads them,
-                # otherwise it adds the whole experiment dataset
+                # otherwise it adds the whole experiment data
                 if key:
                     files_name = self.get_datasets(self.key)
                 else:
@@ -56,7 +56,7 @@ class TSDataset(Dataset):
             for dataset in self.datasets:
                 with h5py.File(os.path.join(root, PATH[dataset]), 'r') as f:
                     # if split keys are given then it reads them,
-                    # otherwise it adds the whole experiment dataset
+                    # otherwise it adds the whole experiment data
                     if key and dataset == ex_dataset:
                         files_name = self.get_datasets(self.key)
                     else:

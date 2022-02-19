@@ -8,12 +8,12 @@ import torch.nn.functional as F
 
 class SimNet(nn.Module):
 
-    def __init__(self, num_heads, d_model, layers, sparsity, use_cls, dropout,
-                 max_len, num_classes):
+    def __init__(self, num_heads, d_model, num_layers, sparsity, use_cls, dropout,
+                 num_classes, use_pos, max_len=2500):
         super(SimNet, self).__init__()
         self.num_heads = num_heads
         self.d_model = d_model
-        self.layers = layers
+        self.num_layers = num_layers
         self.sparsity = sparsity
         self.use_cls = use_cls
         self.max_len = max_len
@@ -22,28 +22,32 @@ class SimNet(nn.Module):
 
         self.embedding_layer = Embedding(
             in_features=self.in_features, d_model=self.d_model,
-            use_pos=True, sparsity=sparsity, use_cls=use_cls)
+            use_pos=use_pos, sparsity=sparsity, use_cls=use_cls)
 
-        self.encoder = Encoder(num_heads, self.d_model, self.layers, dropout)
+        self.encoder = Encoder(num_heads, self.d_model, self.num_layers, dropout)
         self.final_layer = nn.Linear(self.d_model, num_classes)
 
-    def forward(self, x, vis_attention=False):
+    def forward(self, x, mask=None, vis_attention=False):
         bs, n, _ = x.size()
         x = self.embedding_layer(x)
 
+        # preprocess padding mask
+        mask = self.process_mask(mask)
         # save attention maps
         attention_maps = []
         if vis_attention:
-            out = self.encoder(x, attention_maps)
-            final_out = self.final_layer(out).view(bs, -1)
-            return torch.sigmoid(final_out), attention_maps
+            out = self.encoder(x, mask, attention_maps)
+            final_out = self.final_layer(out)
+            return final_out, attention_maps
         else:
-            out = self.encoder(x)
-            final_out = self.final_layer(out).view(bs, -1)
-            return torch.sigmoid(final_out)
+            out = self.encoder(x, mask)
+            final_out = self.final_layer(out)
+            return final_out
 
     def process_mask(self, mask):
-
+        cls_mask = torch.tensor([[False]], device=torch.device("cuda"))
+        cls_mask = cls_mask.expand(mask.size()[0], 1)
+        mask = torch.cat([cls_mask, mask], dim=1)
         batch_size, N = mask.size()
         mask = mask.view(batch_size, 1, 1, N)
         mask = mask.expand(batch_size, self.num_heads, N, N)

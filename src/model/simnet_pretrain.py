@@ -12,7 +12,7 @@ class PretrainModel(nn.Module):
     """
 
     def __init__(self, feature_dim: int = 128, sparsity: float = 0.7,
-                 memory_size: int = 8, **kwargs):
+                 memory_size: int = 128, **kwargs):
         """
         :param feature_dim: dimension of output features
         :param sparsity: sparsity of main encoder
@@ -35,7 +35,8 @@ class PretrainModel(nn.Module):
 
     def queue(self, x):
         batch_size = x.size()[1]
-        assert batch_size % self.memory_size == 0
+
+        assert (self.memory_size % batch_size) == 0
 
         # covert pointer to int
         ptr = int(self.memory_pointer)
@@ -64,7 +65,7 @@ class PretrainModel(nn.Module):
             sparse_x = F.normalize(self.encoder_side(x, mask)[:, 0], dim=1)
 
         # calculate similarities
-        sparse_x = sparse_x.transpose(1, 2)
+        sparse_x = sparse_x.transpose(0, 1)
         similarities_online = torch.matmul(full_x, sparse_x)
         similarities_offline = torch.matmul(full_x, self.memory)
         similarities = torch.cat([similarities_online, similarities_offline],
