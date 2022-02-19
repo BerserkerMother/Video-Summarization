@@ -30,17 +30,21 @@ def main(args, splits):
         logging.info(f"\nSplit {split_idx + 1}")
 
         # define model
-        model = SimNet(args.num_heads, args.d_model, args.num_sumtokens, args.num_layers,
-                       args.mask_size, args.dropout, max_len=5000, num_classes=1)
+        model = SimNet(num_heads=args.num_heads, d_model=args.d_model,
+                       num_layers=args.num_layers, sparsity=0.,
+                       use_cls=False, dropout=args.dropout,
+                       num_classes=1, use_pos=True).cuda()
         optim = Adam(model.parameters(), lr=args.lr,
                      weight_decay=args.weight_decay)
 
         scaler = amp.GradScaler()
         # loads model.pth
-        if os.path.exists("model_mae.pth"):
+        if os.path.exists("pretrain.pth"):
             if args.use_model:
                 state_dict = torch.load(args.use_model)
-                model.load_state_dict(state_dict)
+                del state_dict["final_layer.weight"]
+                del state_dict["final_layer.bias"]
+                model.load_state_dict(state_dict, strict=False)
 
         num_parameters = sum(p.numel()
                              for p in model.parameters() if p.requires_grad)
@@ -145,7 +149,7 @@ def train_step(model, optim, ft_train_loader, scaler, device):
         target = target.to(device)
 
         with amp.autocast():
-            pred = model(feature)
+            pred = torch.sigmoid(model(feature)).view(1, -1)
             loss = F.mse_loss(pred, target)
 
         optim.zero_grad()
@@ -167,7 +171,7 @@ def val_step(model, ft_test_loader, device):
         feature = feature.to(device)
         target = target.to(device)
 
-        pred = model(feature)
+        pred = torch.sigmoid(model(feature)).view(1, -1)
         loss = F.mse_loss(pred, target)
 
         loss_avg.update(loss.item(), 1)
@@ -191,17 +195,12 @@ def save_attention_weights(model, ft_train_loader, device):
     torch.save(attention_weights_all, "weights.pth")
 
 
-arg_parser = argparse.ArgumentParser('Local Attention with '
-                                     'Summarization Tokens')
-arg_parser.add_argument('--heads', default=4, type=int,
+arg_parser = argparse.ArgumentParser('lol')
+arg_parser.add_argument('--num_heads', default=4, type=int,
                         help="number of self attention heads")
 arg_parser.add_argument('--d_model', default=512, type=int)
-arg_parser.add_argument('--num_sumtokens', default=128, type=int,
-                        help="number of summary tokens")
-arg_parser.add_argument('--layers', default=3, type=int,
+arg_parser.add_argument('--num_layers', default=3, type=int,
                         help="number of transformer layers")
-arg_parser.add_argument('--mask_size', default=50, type=int,
-                        help="numer of nearby visible tokens for one token")
 arg_parser.add_argument('--dropout', default=0.3, type=float,
                         help="model dropout")
 

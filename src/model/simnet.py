@@ -32,7 +32,8 @@ class SimNet(nn.Module):
         x = self.embedding_layer(x)
 
         # preprocess padding mask
-        mask = self.process_mask(mask)
+        if mask:
+            mask = self.process_mask(mask)
         # save attention maps
         attention_maps = []
         if vis_attention:
