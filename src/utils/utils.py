@@ -51,7 +51,7 @@ def mse_with_mask_loss(output, targets, mask, reduction="avg"):
 
     output = output * scale
     targets = targets * scale
-    loss = 0.5 * ((output - targets) ** 2)
+    loss = (output - targets) ** 2
 
     if reduction == "avg":
         return loss.mean()
