@@ -11,9 +11,9 @@ from torch.utils.data import DataLoader
 from torch.cuda import amp
 from model import SimNet
 
-from utils import set_seed, AverageMeter, load_json, load_yaml
+from utils import set_seed, AverageMeter, load_json, load_yaml, mse_with_mask_loss
 from evaluation.compute_metrics import eval_metrics
-from data import TSDataset, collate_fn
+from data import TSDataset, collate_fn_train, collate_fn_test
 
 
 def main(args, splits):
@@ -63,6 +63,7 @@ def main(args, splits):
             dataset=train_split_set,
             shuffle=True,
             num_workers=4,
+            collate_fn=collate_fn_train,
             batch_size=args.batch_size
         )
 
@@ -70,8 +71,8 @@ def main(args, splits):
             dataset=val_split_set,
             shuffle=True,
             num_workers=4,
-            collate_fn=collate_fn,
-            batch_size=args.batch_size
+            collate_fn=collate_fn_test,
+            batch_size=1
         )
 
         ft_time_start = time.time()
@@ -147,10 +148,12 @@ def train_step(model, optim, ft_train_loader, scaler, device):
     for i, (feature, target) in enumerate(ft_train_loader):
         feature = feature.to(device)
         target = target.to(device)
+        # make padding mask, 1000 is padding value
+        mask = (feature[:, :, 0] == 1000)
 
         with amp.autocast():
-            pred = torch.sigmoid(model(feature)).view(1, -1)
-            loss = F.mse_loss(pred, target)
+            pred = torch.sigmoid(model(feature, mask))
+            loss = mse_with_mask_loss(pred, target, mask)
 
         optim.zero_grad()
         scaler.scale(loss).backward()
@@ -212,7 +215,7 @@ arg_parser.add_argument('--data', type=str)
 arg_parser.add_argument('--ex_dataset', type=str, default="tvsum",
                         help="experimenting data")
 arg_parser.add_argument('--datasets', type=str, help="datasets to load")
-arg_parser.add_argument('--batch_size', default=1, type=int,
+arg_parser.add_argument('--batch_size', default=4, type=int,
                         help="mini batch size")
 arg_parser.add_argument('--max_epoch', default=200, type=int,
                         help="number of training epochs")

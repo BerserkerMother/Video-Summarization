@@ -122,7 +122,14 @@ def collate_fn_pretrain(batch):
     return features
 
 
-def collate_fn(batch):
+def collate_fn_train(batch):
+    features, targets = zip(*batch)
+    features = pad_sequence(features, batch_first=True, padding_value=1000)
+    targets = pad_sequence(targets, batch_first=True, padding_value=1000)
+    return features, targets
+
+
+def collate_fn_test(batch):
     features, targets, user_summaries = batch[0]
     features = features.unsqueeze(0)
     targets = targets.unsqueeze(0)

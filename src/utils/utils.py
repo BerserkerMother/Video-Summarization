@@ -40,3 +40,19 @@ def load_json(path):
         splits = json.load(f)
 
     return splits
+
+
+def mse_with_mask_loss(output, targets, mask, reduction="avg"):
+    batch_size, N, _ = output.size()
+    output = output.view(batch_size, N)
+
+    scale = torch.ones_like(output)
+    scale[mask] = 0.0
+
+    output = output * scale
+    targets = targets * scale
+    loss = 0.5 * ((output - targets) ** 2)
+
+    if reduction == "avg":
+        return loss.mean()
+    return loss.sum()

@@ -38,7 +38,7 @@ class SimNet(nn.Module):
         x = self.embedding_layer(x)
 
         # preprocess padding mask
-        if mask:
+        if isinstance(mask, Tensor):
             mask = self.process_mask(mask)
         # save attention maps
         attention_maps = []
@@ -54,9 +54,10 @@ class SimNet(nn.Module):
             return final_out
 
     def process_mask(self, mask):
-        cls_mask = torch.tensor([[False]], device=torch.device("cuda"))
-        cls_mask = cls_mask.expand(mask.size()[0], 1)
-        mask = torch.cat([cls_mask, mask], dim=1)
+        if self.use_cls:
+            cls_mask = torch.tensor([[False]], device=torch.device("cuda"))
+            cls_mask = cls_mask.expand(mask.size()[0], 1)
+            mask = torch.cat([cls_mask, mask], dim=1)
         batch_size, N = mask.size()
         mask = mask.view(batch_size, 1, 1, N)
         mask = mask.expand(batch_size, self.num_heads, N, N)
