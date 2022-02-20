@@ -22,7 +22,8 @@ class TLOST(nn.Module):
         self.in_features = 1024
         self.device = device
 
-        self.sum_tokens = nn.Parameter(torch.zeros(self.num_sumtokens, self.d_model))
+        self.sum_tokens = nn.Parameter(
+            torch.zeros(self.num_sumtokens, self.d_model))
 
         self.embedding_layer = Embedding(
             in_features=self.in_features, d_model=self.d_model,
@@ -33,8 +34,19 @@ class TLOST(nn.Module):
 
         self.final_layer = nn.Linear(self.d_model, 1)
 
-    def criterian(self, pred, true):
-        return F.mse_loss(pred, true)
+    def criterian(self, pred, true, representation):
+        # mse
+        mse = F.mse_loss(pred, true)
+        # diversity
+        n = representation.size(1)
+        rep1 = representation.expand(n, n, -1)  # [n, n, dim]
+        rep2 = representation.transpose(0, 1)  # [n, 1, dim]
+
+        similarity = F.cosine_similarity(rep1, rep2, dim=-1).fill_diagonal_(0)
+        div_loss = similarity.sum() / (n * (n-1))
+
+        loss = mse + div_loss
+        return loss
 
     def create_local_mask(self, n, size):
         mask1 = torch.ones((n, n), device=self.device).triu(diagonal=size)
@@ -45,7 +57,8 @@ class TLOST(nn.Module):
             device=self.device)
         mask.index_fill_(0, idx, 0)
         mask.index_fill_(1, idx, 0)
-        all_mask = torch.zeros((n + 1, n + 1), device=self.device)
+        all_mask = torch.ones((n + 1, n + 1), device=self.device)
+        all_mask.index_fill_(0, torch.tensor([0], device=self.device), 0)
         all_mask[1:, 1:] = mask
         return all_mask.type(torch.bool)
 
@@ -57,23 +70,17 @@ class TLOST(nn.Module):
         local_mask = self.create_local_mask(n, self.mask_size)
         mem = self.encoder(x, local_mask)
         # sum tokens
+        # ### up sample at begining
         token_expand = (n // self.num_sumtokens) + 1
         sum_toks = self.sum_tokens.view(self.num_sumtokens, 1, -1) \
             .expand(self.num_sumtokens, token_expand, self.d_model)
         sum_toks = sum_toks.contiguous().view(1, -1, self.d_model). \
             expand(bs, self.num_sumtokens * token_expand, self.d_model)
         sum_toks = sum_toks[:, :n, :]
-        out = self.decoder(sum_toks, mem)
 
-        # similarity scores
-        tokens = mem[:, 1:]
-        cls_token = mem[:, 0].unsqueeze(1)
-        cos_sim = F.cosine_similarity(tokens, cls_token, dim=2)
-        cos_sim = cos_sim / cos_sim.max()
+        final_out = torch.sigmoid(self.final_layer(sum_toks)).squeeze(-1)
 
-        final_out = torch.sigmoid(self.final_layer(out)).squeeze(-1)
-
-        return final_out * cos_sim
+        return final_out, mem[:, 1:]
 
 
 class Encoder(nn.Module):
@@ -179,6 +186,7 @@ class DecoderBlock(nn.Module):
         z2 = self.norm2(self.dropout2(ca_x) + z)  # residual
 
         mlp_out = self.mlp(z2)
+
         z3 = self.norm3(self.dropout3(mlp_out) + z2)  # residual
 
         return z3

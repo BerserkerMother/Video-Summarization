@@ -8,8 +8,10 @@ import torch
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.cuda import amp
-from models import TLOST
+import numpy as np
 
+from models import TLOST
+from models import TNT
 from utils import set_seed, AverageMeter, load_json, load_yaml
 from evaluation.compute_metrics import eval_metrics
 from dataset import TSDataset, collate_fn
@@ -22,13 +24,13 @@ def main(args, splits):
     avg_ktau = AverageMeter()
     avg_spr = AverageMeter()
     for split_idx, split in enumerate(splits):
-        set_seed(34123312)
-        wandb.init(project='Video-Summarization', entity='berserkermother',
+        set_seed(10)
+        wandb.init(project='Video-Summarization', entity='hojjat_m',
                    name=args.__str__()[10:-1], config=args, reinit=True)
-        wandb.config.seed = 34123312
+        wandb.config.seed = 10
         logging.info(f"\nSplit {split_idx + 1}")
-        model = TLOST(args.heads, args.d_model, args.num_sumtokens, args.layers,
-                      args.mask_size, args.dropout, max_len=10000, device=device)
+        model = TNT(args.heads, args.d_model, args.num_sumtokens, args.layers,
+                    args.mask_size, args.dropout, max_len=10000, device=device)
         optim = Adam(model.parameters(), lr=args.lr,
                      weight_decay=args.weight_decay)
 
@@ -53,7 +55,7 @@ def main(args, splits):
         train_loader = DataLoader(
             dataset=train_split_set,
             shuffle=True,
-            num_workers=4,
+            num_workers=1,
             collate_fn=collate_fn,
             batch_size=args.batch_size
         )
@@ -61,7 +63,7 @@ def main(args, splits):
         val_loader = DataLoader(
             dataset=val_split_set,
             shuffle=True,
-            num_workers=4,
+            num_workers=1,
             collate_fn=collate_fn,
             batch_size=args.batch_size
         )
@@ -139,10 +141,14 @@ def train_step(model, optim, ft_train_loader, scaler, device):
     for i, (feature, target, _) in enumerate(ft_train_loader):
         feature = feature.to(device)
         target = target.to(device)
+        num_frames = feature.size(1)
+        # random_indices = np.random.choice(num_frames, size=100)
+        # feature = feature[:, random_indices, :]
+        # targets = targets[:, random_indices]
 
         with amp.autocast():
-            pred = model(feature)
-            loss = model.criterian(pred, target)
+            pred, rep = model(feature)
+            loss = model.criterian(pred, target, rep)
 
         optim.zero_grad()
         scaler.scale(loss).backward()
@@ -163,8 +169,8 @@ def val_step(model, ft_test_loader, device):
         feature = feature.to(device)
         target = target.to(device)
 
-        pred = model(feature)
-        loss = model.criterian(pred, target)
+        pred, rep = model(feature)
+        loss = model.criterian(pred, target, rep)
 
         loss_avg.update(loss.item(), 1)
         score_dict[user.name] = pred.squeeze(0).detach().cpu().numpy()
@@ -196,7 +202,8 @@ arg_parser.add_argument("--use_model", action="store_true",
 arg_parser.add_argument("--save", action="store_true",
                         help="if true it saved model after each epoch")
 
-arg_parser.add_argument('--dsnet_split', action='store_true')
+arg_parser.add_argument('--split', default='dsnet',
+                        choices=['dsnet', 'summarizer', 'por'])
 
 arguments = arg_parser.parse_args()
 
@@ -206,12 +213,15 @@ logging.basicConfig(
 )
 
 if __name__ == '__main__':
-    logging.info(arguments.dsnet_split)
-    if arguments.dsnet_split:
-        split_path = "src/splits_dsnet/tvsum.yaml"
+    logging.info(arguments.split)
+    if arguments.split == 'dsnet':
+        split_path = "splits_dsnet/tvsum.yaml"
         splits = load_yaml(split_path)
+    elif arguments.split == 'summarizer':
+        split_path = "splits_summarizer/tvsum_splits.json"
+        splits = load_json(split_path)
     else:
-        split_path = "src/splits_summarizer/tvsum_splits.json"
+        split_path = "splits_por/tvsum.json"
         splits = load_json(split_path)
 
     # print(splits)
