@@ -1,5 +1,6 @@
 import logging
 import math
+from typing import List
 
 import torch
 from torch import nn, Tensor
@@ -25,6 +26,11 @@ class SimNet(nn.Module):
             use_pos=use_pos, sparsity=sparsity, use_cls=use_cls)
 
         self.encoder = Encoder(num_heads, self.d_model, self.num_layers, dropout)
+        self.fcs = FullyConnected(
+            dim_in=d_model, final_dim=d_model,
+            hidden_layers=[d_model * 2, d_model, d_model // 2,
+                           d_model, d_model * 2],
+            dropout_p=0.4)
         self.final_layer = nn.Linear(self.d_model, num_classes)
 
     def forward(self, x, mask=None, vis_attention=False):
@@ -38,10 +44,12 @@ class SimNet(nn.Module):
         attention_maps = []
         if vis_attention:
             out = self.encoder(x, mask, attention_maps)
+            out = self.fcs(out)
             final_out = self.final_layer(out)
             return final_out, attention_maps
         else:
             out = self.encoder(x, mask)
+            out = self.fcs(out)
             final_out = self.final_layer(out)
             return final_out
 
@@ -228,3 +236,36 @@ class PositionalEncoding(nn.Module):
     def forward(self, token_embedding: Tensor):
         return self.dropout(token_embedding
                             + self.pos_embedding[:, :token_embedding.size()[1]])
+
+
+# test for to see how good fully connected layers work
+class FullyConnected(nn.Module):
+    def __init__(self, dim_in: int, final_dim: int, hidden_layers: List,
+                 dropout_p: float):
+        super(FullyConnected, self).__init__()
+        # model info
+        self.dim_in = dim_in
+        self.final_dim = final_dim
+
+        # model layers
+        layers = [
+            nn.Linear(dim_in, hidden_layers[0]),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout_p)
+        ]
+        for i in range(len(hidden_layers) - 1):
+            layer = nn.Linear(hidden_layers[i], hidden_layers[i + 1])
+            activation = nn.ReLU(inplace=True)
+            dropout = nn.Dropout(p=dropout_p)
+            layers += [layer, activation, dropout]
+        # last layer
+        layer = nn.Linear(hidden_layers[-1], final_dim)
+        activation = nn.ReLU(inplace=True)
+        dropout = nn.Dropout(p=dropout_p)
+        layers += [layer, activation, dropout]
+        # nn.Sequential
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.layers(x)
+        return x
