@@ -25,12 +25,16 @@ class SimNet(nn.Module):
             in_features=self.in_features, d_model=self.d_model,
             use_pos=use_pos, sparsity=sparsity, use_cls=use_cls)
 
+        # importance embeddings
+        self.im_emd = nn.Parameter(torch.zeros((1, 10, d_model)))
         self.encoder = Encoder(num_heads, self.d_model, self.num_layers, dropout)
         self.fcs = FullyConnected(
             dim_in=d_model, final_dim=d_model,
             hidden_layers=[d_model * 2, d_model, d_model // 2,
                            d_model, d_model * 2],
             dropout_p=0.4)
+        self.im_attention = MultiAttentionNetwork(d_model, d_model,
+                                                  num_heads, dropout)
         self.final_layer = nn.Linear(self.d_model, num_classes)
 
     def forward(self, x, mask=None, vis_attention=False):
@@ -44,12 +48,14 @@ class SimNet(nn.Module):
         attention_maps = []
         if vis_attention:
             out = self.encoder(x, mask, attention_maps)
-            out = self.fcs(out)
+            im_emd = self.im_emd.expand(bs, 10, self.d_model)
+            out, _ = self.im_attention(out, im_emd)
             final_out = self.final_layer(out)
             return final_out, attention_maps
         else:
             out = self.encoder(x, mask)
-            out = self.fcs(out)
+            im_emd = self.im_emd.expand(bs, 10, self.d_model)
+            out, _ = self.im_attention(out, im_emd)
             final_out = self.final_layer(out)
             return final_out
 
