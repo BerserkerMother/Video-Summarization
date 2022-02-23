@@ -70,6 +70,7 @@ class PretrainModel(nn.Module):
         similarities_offline = torch.matmul(full_x, self.memory)
         similarities = torch.cat([similarities_online, similarities_offline],
                                  dim=1)
+        similarities = F.softmax(similarities, dim=1)
         # create custom targets
         targets = torch.arange(start=0, end=batch_size,
                                device=torch.device("cuda"))
