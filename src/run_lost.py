@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torch.cuda import amp
-from model import SimNet
+from model import *
 
 from utils import set_seed, AverageMeter, load_json, load_yaml, mse_with_mask_loss
 from evaluation.compute_metrics import eval_metrics
@@ -24,16 +24,14 @@ def main(args, splits):
     avg_spr = AverageMeter()
     for split_idx, split in enumerate(splits):
         set_seed(34123312)
-        wandb.init(project='Video-Summarization', entity='berserkermother',
+        wandb.init(project='Video-Summarization', entity='hojjat_m',
                    name=args.__str__()[10:-1], config=args, reinit=True)
         wandb.config.seed = 34123312
         logging.info(f"\nSplit {split_idx + 1}")
 
         # define model
-        model = SimNet(num_heads=args.num_heads, d_model=args.d_model,
-                       num_layers=args.num_layers, sparsity=0.,
-                       use_cls=False, dropout=args.dropout,
-                       num_classes=1, use_pos=True).cuda()
+        model = TLOST(args.num_heads, args.d_model, args.num_sumtokens, args.num_layers,
+                      max_len=10000, device=device).cuda()
         optim = Adam(model.parameters(), lr=args.lr,
                      weight_decay=args.weight_decay)
 
@@ -62,7 +60,7 @@ def main(args, splits):
         train_loader = DataLoader(
             dataset=train_split_set,
             shuffle=True,
-            num_workers=4,
+            num_workers=1,
             collate_fn=collate_fn_train,
             batch_size=args.batch_size
         )
@@ -70,7 +68,7 @@ def main(args, splits):
         val_loader = DataLoader(
             dataset=val_split_set,
             shuffle=True,
-            num_workers=4,
+            num_workers=1,
             collate_fn=collate_fn_test,
             batch_size=1
         )
@@ -148,12 +146,10 @@ def train_step(model, optim, ft_train_loader, scaler, device):
     for i, (feature, target) in enumerate(ft_train_loader):
         feature = feature.to(device)
         target = target.to(device)
-        # make padding mask, 1000 is padding value
-        mask = (feature[:, :, 0] == 1000)
 
         with amp.autocast():
-            pred = torch.sigmoid(model(feature, mask))
-            loss = mse_with_mask_loss(pred, target, mask)
+            pred = model(feature)
+            loss = model.criterian(pred, target)
 
         optim.zero_grad()
         scaler.scale(loss).backward()
@@ -174,8 +170,8 @@ def val_step(model, ft_test_loader, device):
         feature = feature.to(device)
         target = target.to(device)
 
-        pred = torch.sigmoid(model(feature)).view(1, -1)
-        loss = F.mse_loss(pred, target)
+        pred = model(feature)
+        loss = model.criterian(pred, target)
 
         loss_avg.update(loss.item(), 1)
         score_dict[user.name] = pred.squeeze(0).detach().cpu().numpy()
@@ -198,7 +194,7 @@ def save_attention_weights(model, ft_train_loader, device):
     torch.save(attention_weights_all, "weights.pth")
 
 
-arg_parser = argparse.ArgumentParser('lol')
+arg_parser = argparse.ArgumentParser('Video sum different models')
 arg_parser.add_argument('--num_heads', default=4, type=int,
                         help="number of self attention heads")
 arg_parser.add_argument('--d_model', default=512, type=int)
@@ -215,6 +211,7 @@ arg_parser.add_argument('--data', type=str)
 arg_parser.add_argument('--ex_dataset', type=str, default="tvsum",
                         help="experimenting data")
 arg_parser.add_argument('--datasets', type=str, help="datasets to load")
+
 arg_parser.add_argument('--batch_size', default=4, type=int,
                         help="mini batch size")
 arg_parser.add_argument('--max_epoch', default=200, type=int,
