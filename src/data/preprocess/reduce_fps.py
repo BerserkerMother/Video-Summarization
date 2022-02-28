@@ -1,9 +1,7 @@
-import os
 import numpy as np
 from typing import Tuple
 
 import cv2 as cv
-import glob
 
 
 def reduce_fps(video_path: str, fps: int = 2) -> Tuple:
