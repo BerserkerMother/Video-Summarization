@@ -46,11 +46,12 @@ def create_tvsum_dataset(path: str):
     # extract features and add n_step and picks to annotations
     final_annotations = {}
     for extra in process_features(video_path, temp, fps=2):
-        video_name, indices, n_steps = extra
+        video_name, indices, n_steps, segments = extra
         # add number of steps and picks to final annotations
         anno = annotations[video_name]._asdict()
         anno["n_steps"] = n_steps
         anno["picks"] = indices
+        anno["change_points"] = segments
         final_annotations[video_name] = anno
 
     # save annotations as pickle file
