@@ -2,7 +2,7 @@ import numpy as np
 from .cpd_nonlin import cpd_nonlin
 
 
-def cpd_auto(K, ncp, vmax, desc_rate=1, **kwargs):
+def kts_segmentation(K, ncp, vmax, desc_rate=1, **kwargs):
     """Main interface
 
     Detect change points automatically selecting their number
