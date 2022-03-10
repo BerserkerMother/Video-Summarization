@@ -10,7 +10,6 @@ from scipy import io
 def get_tv_annotation(path: str):
     """
     return tvsum annotations
-
     :param path: path to mat file
     :type path: str
     :returns: dictionary (video_id, data)
@@ -73,7 +72,6 @@ def get_tv_annotation(path: str):
 def get_summe_annotation(path: str):
     """
     return summe annotations
-
     :param path: path to directory containing mat files
     :type path: str
     :returns: dictionary (video_id, data)
@@ -97,5 +95,3 @@ def get_summe_annotation(path: str):
         data = Data(gt_score, n_frame, name, user_score, segment)
         dataset[name] = data
     return dataset
-
-

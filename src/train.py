@@ -145,15 +145,16 @@ def main(args, splits):
 def train_step(model, optim, ft_train_loader, scaler, device):
     model.train()
     loss_avg = AverageMeter()
-    for i, (feature, target) in enumerate(ft_train_loader):
+    for i, (feature, vid_rep, target) in enumerate(ft_train_loader):
         feature = feature.to(device)
+        vid_rep = vid_rep.to(device)
         target = target.to(device)
         # make padding mask, 1000 is padding value
         mask = (feature[:, :, 0] == 1000)
 
         with amp.autocast():
-            pred = torch.sigmoid(model(feature, mask))
-            loss = mse_with_mask_loss(pred, target, mask)
+            pred, vid_loss = model(feature, vid_rep, mask)
+            loss = mse_with_mask_loss(pred, target, mask) + vid_loss
 
         optim.zero_grad()
         scaler.scale(loss).backward()
@@ -174,7 +175,7 @@ def val_step(model, ft_test_loader, device):
         feature = feature.to(device)
         target = target.to(device)
 
-        pred = torch.sigmoid(model(feature)).view(1, -1)
+        pred = model(feature).view(1, -1)
         loss = F.mse_loss(pred, target)
 
         loss_avg.update(loss.item(), 1)

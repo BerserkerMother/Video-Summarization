@@ -38,6 +38,7 @@ def kts_seg(features: np.array, num_seg: int,
     """
 
     if kernel == "dot":
+        # TODO: be sure to normalize frame features
         similarities = np.dot(features, features.T)
         segments, costs = kts_segmentation(similarities,
                                            num_seg,

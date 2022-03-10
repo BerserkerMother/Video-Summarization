@@ -10,12 +10,12 @@ import numpy as np
 import get_annotation
 import reduce_fps
 import feature_extraction as ft
-from .segmentations import get_segment_fn
+from segmentations import get_segment_fn
 
 ACCEPTED_VIDEO_FORMATS = ["mp4", "mkv", "mpeg"]
 
 
-def create_tvsum_dataset(path: str):
+def create_tvsum_dataset(path: str, fps: int = 2):
     """
     create tvsum dataset as tar.gz file
 
@@ -29,6 +29,8 @@ def create_tvsum_dataset(path: str):
 
     :param path: path to dataset folder
     :type path: str
+    :param fps: frame per second of output file
+    :type fps: int
     """
 
     # create temp directory to save files
@@ -45,22 +47,22 @@ def create_tvsum_dataset(path: str):
 
     # extract features and add n_step and picks to annotations
     final_annotations = {}
-    for extra in process_features(video_path, temp, fps=2):
+    for extra in process_features(video_path, temp, fps=fps):
         video_name, indices, n_steps, segments = extra
         # add number of steps and picks to final annotations
-        anno = annotations[video_name]._asdict()
-        anno["n_steps"] = n_steps
-        anno["picks"] = indices
-        anno["change_points"] = segments
-        final_annotations[video_name] = anno
+        # anno = annotations[video_name]._asdict()
+        # anno["n_steps"] = n_steps
+        # anno["picks"] = indices
+        # anno["change_points"] = segments
+        # final_annotations[video_name] = anno
 
     # save annotations as pickle file
-    annotation_loc = os.path.join(temp, "annotations")
-    with open(annotation_loc, "wb") as file:
-        pickle.dump(final_annotations, file)
+    #annotation_loc = os.path.join(temp, "annotations")
+    #with open(annotation_loc, "wb") as file:
+    #   pickle.dump(final_annotations, file)
     make_tar(temp, "haha.tar.gz")
 
-    # shutil.rmtree(temp)
+    shutil.rmtree(temp)
 
 
 def create_summe_dataset(path: str, fps: int = 2):
@@ -95,7 +97,7 @@ def create_summe_dataset(path: str, fps: int = 2):
 
     # extract features and add n_step and picks to annotations
     final_annotations = {}
-    for extra in process_features(video_path, temp, fps=2):
+    for extra in process_features(video_path, temp, fps=fps):
         video_name, indices, n_steps, segments = extra
         # add number of steps and picks to final annotations
         anno = annotations[video_name]._asdict()
@@ -110,7 +112,7 @@ def create_summe_dataset(path: str, fps: int = 2):
         pickle.dump(final_annotations, file)
     make_tar(temp, "haha.tar.gz")
 
-    # shutil.rmtree(temp)
+    shutil.rmtree(temp)
 
 
 def make_tar(path, tar_name):
@@ -163,12 +165,12 @@ def process_features(video_path, temp, fps: int = 2):
             n_steps = len(indices)
 
             # extract video and frame level features
-            frame_ft = ft.get_google_net_features(video_array, size=224)
+            # frame_ft = ft.get_google_net_features(video_array, size=224)
             video_ft = ft.get_video_feature(video_array, size=122)
             # save features
-            frame_ft_path = os.path.join(frame_dir, video_name + ".npy")
+            # frame_ft_path = os.path.join(frame_dir, video_name + ".npy")
             video_ft_path = os.path.join(video_dir, video_name + ".npy")
-            np.save(frame_ft_path, frame_ft)
+            # np.save(frame_ft_path, frame_ft)
             np.save(video_ft_path, video_ft)
             # produce segments
             seg_fn = get_segment_fn(mode="uniform")
@@ -177,4 +179,4 @@ def process_features(video_path, temp, fps: int = 2):
             yield video_name, indices, n_steps, segments
 
 # create_summe_dataset("/home/kave/Downloads/VS datasets/SumMe", fps=2)
-# create_tvsum_dataset("/home/kave/Downloads/VS datasets/tvsum50_ver_1_1/ydata-tvsum50-v1_1/")
+create_tvsum_dataset("/home/kave/Downloads/VS datasets/tvsum50_ver_1_1/ydata-tvsum50-v1_1/")

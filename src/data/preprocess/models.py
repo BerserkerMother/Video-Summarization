@@ -48,7 +48,7 @@ class R3D18(nn.Module):
         need_modules = model_modules[:-1]
         # create model as nn.Sequential
         self.model = nn.Sequential(*need_modules)
-        self.to(device)
+        #self.to(device)
 
     def forward(self, x):
         """
@@ -60,7 +60,7 @@ class R3D18(nn.Module):
         """
 
         with torch.no_grad():
-            x = x.to(device)
+            #x = x.to(device)
             x = self.model(x)
             x = torch.flatten(x, 1)
             return x

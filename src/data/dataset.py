@@ -64,18 +64,25 @@ class TSDataset(Dataset):
                     for key in files_name:
                         features = f[key]['features'][...].astype(np.float32)
                         target = f[key]['gtscore'][...].astype(np.float32)
+                        # video features
+                        video_rep = np.load(os.path.join(root, "video",
+                                                         key + ".npy"))
+
                         if features.shape[0] > 50:
-                            self.data.append(features)
+                            self.data.append((features, video_rep))
                             self.target.append(target)
 
     def __len__(self):
         return len(self.data)
 
     def __getitem__(self, idx):
-        features = torch.tensor(self.data[idx])
+        features = self.data[idx]
         targets = torch.tensor(self.target[idx])
         if self.split == "train":
-            return features, targets
+            frame_rep = torch.tensor(features[0])
+            vid_rep = torch.tensor(features[1])
+            return frame_rep, vid_rep, targets
+        features = torch.tensor(features)
         return features, targets, self.user_summaries[idx]
 
     def get_datasets(self, keys: List[str]):
@@ -123,10 +130,11 @@ def collate_fn_pretrain(batch):
 
 
 def collate_fn_train(batch):
-    features, targets = zip(*batch)
+    features, vid_reps, targets = zip(*batch)
     features = pad_sequence(features, batch_first=True, padding_value=1000)
+    vid_reps = torch.stack(vid_reps, dim=0)
     targets = pad_sequence(targets, batch_first=True, padding_value=1000)
-    return features, targets
+    return features, vid_reps, targets
 
 
 def collate_fn_test(batch):

@@ -43,8 +43,7 @@ def load_json(path):
 
 
 def mse_with_mask_loss(output, targets, mask, reduction="avg"):
-    batch_size, N, _ = output.size()
-    output = output.view(batch_size, N)
+    batch_size, N = output.size()
 
     scale = torch.ones_like(output)
     scale[mask] = 0.0
