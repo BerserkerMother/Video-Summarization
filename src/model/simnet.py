@@ -26,7 +26,8 @@ class SimNet(nn.Module):
             use_pos=use_pos, sparsity=sparsity, use_cls=use_cls)
 
         # importance embeddings
-        self.encoder = Encoder(num_heads, self.d_model, self.num_layers, dropout)
+        self.encoder_a = Encoder(num_heads, self.d_model, self.num_layers, dropout)
+        self.encoder_b = Encoder(num_heads, self.d_model, self.num_layers, dropout)
         self.final_layer = nn.Linear(self.d_model, num_classes)
 
         # video space transformation
@@ -41,8 +42,9 @@ class SimNet(nn.Module):
         if isinstance(mask, Tensor):
             mask_new = self.process_mask(mask)
         # save attention maps
-        features = self.encoder(x, mask_new)
-        out = self.final_layer(features)
+        features = self.encoder_a(x, mask_new)
+        out = self.encoder_b(features)
+        out = self.final_layer(out)
         scores = torch.sigmoid(out)
 
         if isinstance(vid_rep, Tensor):
