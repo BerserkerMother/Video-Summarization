@@ -24,15 +24,14 @@ def main(args):
     )
     logging.info("number of videos: %d" % len(dataset))
 
-    model = PretrainModel(d_model=args.d_model, num_heads=args.num_heads,
+    model = PretrainModel(num_heads=args.num_heads,
                           num_layers=args.num_layers, sparsity=args.sparsity,
-                          dropout=args.dropout, num_classes=128,
-                          use_pos=args.use_pos,
-                          memory_size=args.memory_size).cuda()
+                          dropout=args.dropout, num_classes=1,
+                          use_pos=args.use_pos).cuda()
     num_el = sum(module.numel() for module in model.parameters()
                  if module.requires_grad) // 1000000
     logging.info('number of model parameter %dM' % num_el)
-    optimizer = torch.optim.Adam(model.encoder_main.parameters(), lr=args.lr,
+    optimizer = torch.optim.Adam(model.encoder.parameters(), lr=args.lr,
                                  weight_decay=args.weight_decay)
     scaler = amp.GradScaler()
 
@@ -41,20 +40,21 @@ def main(args):
         train_loss = train(model, optimizer, scaler, train_loader, epoch)
         logging.info("Total Loss %f" % train_loss)
         print('_' * 50)
-        torch.save(model.encoder_main.state_dict(), "pretrain.pth")
+        torch.save(model.encoder.state_dict(), "pretrain.pth")
 
 
 def train(model, optimizer, scaler, loader, e):
     train_loss = AverageMeter()
     temp_loss = 0
-    for i, features in enumerate(loader):
+    for i, (features, vid_rep) in enumerate(loader):
         features = features.cuda()
+        vid_rep = vid_rep.cuda()
         # make padding mask, 1000 is padding value
         mask = (features[:, :, 0] == 1000)
 
         with amp.autocast():
             # forward pass
-            loss = model(features, mask)
+            loss = model(features, vid_rep, mask)
 
         # optimization step
         optimizer.zero_grad()
@@ -72,8 +72,8 @@ def train(model, optimizer, scaler, loader, e):
 
 
 # arguments
-arg_parser = argparse.ArgumentParser(description=
-                                     'Video Summarization with Deep Learning')
+arg_parser = argparse.ArgumentParser(
+    description='Video Summarization with Deep Learning')
 # data
 arg_parser.add_argument('--data', required=True, type=str,
                         help='path to data folder')
@@ -82,20 +82,18 @@ arg_parser.add_argument('--datasets', default='tvsum+summe+ovp+youtube',
 arg_parser.add_argument('--batch_size', default=4, type=int,
                         help='batch size')
 # model
-arg_parser.add_argument('--d_model', type=int, default=256,
+arg_parser.add_argument('--d_model', type=int, default=512,
                         help='hidden size dimension')
 arg_parser.add_argument('--use_pos', type=bool, default=True,
                         help='weather to use positional encoding or not')
-arg_parser.add_argument('--num_layers', type=int, default=6,
+arg_parser.add_argument('--num_layers', type=int, default=3,
                         help='number of encoder layers')
-arg_parser.add_argument('--num_heads', type=int, default=4,
+arg_parser.add_argument('--num_heads', type=int, default=8,
                         help='number of attention heads')
 arg_parser.add_argument('--dropout', type=float, default=.2,
                         help='dropout probability')
 arg_parser.add_argument('--sparsity', type=float, default=0.5,
                         help="control sparsity of model")
-arg_parser.add_argument('--memory_size', type=int, default=128,
-                        help="length of memory")
 # optimizer
 arg_parser.add_argument('--lr', type=float, default=1e-4,
                         help='learning rate value')

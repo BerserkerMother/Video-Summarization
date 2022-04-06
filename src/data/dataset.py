@@ -34,6 +34,7 @@ class PreTrainDataset(Dataset):
 
 
 def collate_fn_pretrain(batch):
-    features = batch
+    features, vid_reps = zip(*batch)
     features = pad_sequence(features, batch_first=True, padding_value=1000)
-    return features
+    vid_reps = torch.stack(vid_reps, dim=0)
+    return features, vid_reps
