@@ -16,11 +16,11 @@ class PreTrainDataset(Dataset):
         self.datasets = datasets.split("+")
         for dataset in self.datasets:
             dataset_name = PATH[dataset]
-            video_rep_path = os.path.join(root, "video", dataset_name)
+            video_rep_path = os.path.join(root, "video", dataset)
             with h5py.File(os.path.join(root, dataset_name), 'r') as f:
                 for key in f.keys():
                     data = torch.tensor(f[key]['features'][...].astype(np.float32))
-                    video_rep = np.load("%s%s.npy" % (video_rep_path, key))
+                    video_rep = np.load("%s/%s.npy" % (video_rep_path, key))
                     self.data.append((data, video_rep))
 
     def __len__(self):
