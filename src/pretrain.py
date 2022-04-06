@@ -64,7 +64,7 @@ def train(model, optimizer, scaler, loader, e):
 
         # logging
         temp_loss += loss.item()
-        if ((i + 1) % 5) == 0:
+        if ((i + 1) % 2) == 0:
             train_loss.update(temp_loss, 1)
             logging.info('Epoch %3d ,Step %d, loss: %f' % (e, i + 1, temp_loss))
             temp_loss = 0

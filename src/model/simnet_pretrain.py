@@ -29,11 +29,12 @@ class PretrainModel(nn.Module):
                               **kwargs)
 
     def cross_entropy_loss(self, x1, x2):
-        x1 = F.softmax(x1, dim=1)
-        x2 = F.softmax(x2, dim=1)
+        #x1 = F.softmax(x1, dim=1)
+        #x2 = F.softmax(x2, dim=1)
 
-        loss = x2 * torch.log(x1)
-        return loss.mean() * -1
+        #loss = x2 * torch.log(x1)
+        loss = (x1 - x2) ** 2
+        return loss.mean() 
 
     def forward(self, x, video_representation, mask=None,
                 visualize_attention=None):
