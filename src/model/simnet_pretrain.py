@@ -3,16 +3,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .simnet import SimNet
+from simnet import SimNet
 
 
 class PretrainModel(nn.Module):
     """
-    implementation of kave's pretrained siamis network
+    implementation of pretrained knowledge distillation network
     """
 
-    def __init__(self, feature_dim: int = 128, sparsity: float = 0.7,
-                 memory_size: int = 128, **kwargs):
+    def __init__(self, feature_dim: int = 512, sparsity: float = 0.5,
+                 sharpening_t=0.9, **kwargs):
         """
         :param feature_dim: dimension of output features
         :param sparsity: sparsity of main encoder
@@ -21,64 +21,46 @@ class PretrainModel(nn.Module):
         # model parameters
         self.feature_dim = feature_dim
         self.sparsity = sparsity
-        self.memory_size = memory_size
+        self.sharpening_t = sharpening_t
 
         # model encoders
-        self.encoder_main = SimNet(sparsity=0., use_cls=True, **kwargs)
-        self.encoder_side = SimNet(sparsity=sparsity, use_cls=True, **kwargs)
+        self.encoder = SimNet(sparsity=0., use_cls=True, d_model=feature_dim,
+                              **kwargs)
 
-        # encoder side memory buffer
-        self.register_buffer("memory",
-                             torch.randn(feature_dim, memory_size))
-        self.memory = F.normalize(self.memory, dim=0)
-        self.register_buffer("memory_pointer", torch.zeros(1, dtype=torch.long))
+    def cross_entropy_loss(self, x1, x2):
+        x1 = F.softmax(x1, dim=1)
+        x2 = F.softmax(x2, dim=1)
 
-    def queue(self, x):
-        batch_size = x.size()[1]
+        loss = x2 * torch.log(x1)
+        return loss.mean() * -1
 
-        assert (self.memory_size % batch_size) == 0
-
-        # covert pointer to int
-        ptr = int(self.memory_pointer)
-
-        # replace data
-        self.memory[:, ptr: ptr + batch_size] = x
-
-        # update pointer
-        ptr = (batch_size + ptr) % self.memory_size
-        self.memory_pointer[0] = ptr
-
-    @torch.no_grad()
-    def _update_momentum_encoder(self, m):
-        """Momentum update of the momentum encoder"""
-        for param_b, param_m in \
-                zip(self.encoder_main.parameters(), self.encoder_side.parameters()):
-            param_m.data = param_m.data * m + param_b.data * (1. - m)
-
-    def forward(self, x, mask):
+    def forward(self, x, video_representation, mask=None,
+                visualize_attention=None):
         batch_size = x.size()[0]
 
-        # forward pass for each network & selects cls token
-        full_x = F.normalize(self.encoder_main(x, mask)[:, 0], dim=1)
-        with torch.no_grad():
-            self._update_momentum_encoder(0.99)
-            sparse_x = F.normalize(self.encoder_side(x, mask)[:, 0], dim=1)
+        if visualize_attention:
+            out, attention = self.encoder(x, mask, visualize_attention)
+        else:
+            out = self.encoder(x, mask)
+        scores, frame_features = out
 
-        # calculate similarities
-        sparse_x = sparse_x.transpose(0, 1)
-        similarities_online = torch.matmul(full_x, sparse_x)
-        similarities_offline = torch.matmul(full_x, self.memory)
-        similarities = torch.cat([similarities_online, similarities_offline],
-                                 dim=1)
-        similarities = F.softmax(similarities, dim=1)
-        # create custom targets
-        targets = torch.arange(start=0, end=batch_size,
-                               device=torch.device("cuda"))
-
-        # calculate loss
-        loss = F.cross_entropy(similarities, targets)
-
-        # update queue
-        self.queue(sparse_x)
+        # center and sharpen scores
+        center_vec = scores - torch.mean(scores, dim=0, keepdim=True)
+        mixture_scores = F.softmax(center_vec / self.sharpening_t, dim=1)
+        mixture_scores = mixture_scores.transpose(1, 2)
+        video_representation_encoder = torch.matmul(mixture_scores,
+                                                    frame_features)
+        loss = self.cross_entropy_loss(video_representation_encoder.squeeze(1),
+                                       video_representation)
+        print(loss)
 
         return loss
+
+
+model = PretrainModel(
+    num_classes=1,
+)
+x1 = torch.randn((2, 26, 1024))
+x2 = torch.randn((2, 512))
+
+model(x1, x2)

@@ -8,8 +8,10 @@ import torch.nn.functional as F
 
 class SimNet(nn.Module):
 
-    def __init__(self, num_heads, d_model, num_layers, sparsity, use_cls, dropout,
-                 num_classes, use_pos, max_len=2500):
+    def __init__(self, num_heads: int = 8, d_model: int = 512,
+                 num_layers: int = 4, sparsity: float = 0.5,
+                 use_cls: bool = True, dropout: float = 0.2,
+                 num_classes: int = 1, use_pos: bool = True, max_len=2500):
         super(SimNet, self).__init__()
         self.num_heads = num_heads
         self.d_model = d_model
@@ -39,11 +41,11 @@ class SimNet(nn.Module):
         if vis_attention:
             out = self.encoder(x, mask, attention_maps)
             final_out = self.final_layer(out)
-            return final_out, attention_maps
+            return (final_out, out), attention_maps
         else:
             out = self.encoder(x, mask)
             final_out = self.final_layer(out)
-            return final_out
+            return final_out, out
 
     def process_mask(self, mask):
         cls_mask = torch.tensor([[False]], device=torch.device("cuda"))
