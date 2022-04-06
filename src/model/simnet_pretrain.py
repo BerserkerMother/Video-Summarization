@@ -2,6 +2,7 @@ import torch
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
 
 from simnet import SimNet
 
@@ -36,7 +37,6 @@ class PretrainModel(nn.Module):
 
     def forward(self, x, video_representation, mask=None,
                 visualize_attention=None):
-        batch_size = x.size()[0]
 
         if visualize_attention:
             out, attention = self.encoder(x, mask, visualize_attention)
@@ -45,22 +45,15 @@ class PretrainModel(nn.Module):
         scores, frame_features = out
 
         # center and sharpen scores
+        if isinstance(mask, Tensor):
+            scores.masked_fill_(mask, 0.)
         center_vec = scores - torch.mean(scores, dim=0, keepdim=True)
+        if isinstance(mask, Tensor):
+            scores.masked_fill_(mask, float("-inf"))
         mixture_scores = F.softmax(center_vec / self.sharpening_t, dim=1)
         mixture_scores = mixture_scores.transpose(1, 2)
         video_representation_encoder = torch.matmul(mixture_scores,
                                                     frame_features)
         loss = self.cross_entropy_loss(video_representation_encoder.squeeze(1),
                                        video_representation)
-        print(loss)
-
         return loss
-
-
-model = PretrainModel(
-    num_classes=1,
-)
-x1 = torch.randn((2, 26, 1024))
-x2 = torch.randn((2, 512))
-
-model(x1, x2)
