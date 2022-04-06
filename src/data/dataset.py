@@ -64,12 +64,10 @@ class TSDataset(Dataset):
                     for key in files_name:
                         features = f[key]['features'][...].astype(np.float32)
                         target = f[key]['gtscore'][...].astype(np.float32)
-                        # video features
-                        video_rep = np.load(os.path.join(root, "video",
-                                                         key + ".npy"))
 
                         if features.shape[0] > 50:
-                            self.data.append((features, video_rep))
+                            self.data.append(features)
+                            print(features.shape)
                             self.target.append(target)
 
     def __len__(self):
@@ -79,9 +77,8 @@ class TSDataset(Dataset):
         features = self.data[idx]
         targets = torch.tensor(self.target[idx])
         if self.split == "train":
-            frame_rep = torch.tensor(features[0])
-            vid_rep = torch.tensor(features[1])
-            return frame_rep, vid_rep, targets
+            frame_rep = torch.tensor(features)
+            return frame_rep, targets
         features = torch.tensor(features)
         return features, targets, self.user_summaries[idx]
 
@@ -89,27 +86,6 @@ class TSDataset(Dataset):
         files_name = [str(Path(key).name) for key in keys]
         # datasets = [h5py.File(path, 'r') for path in dataset_paths]
         return files_name
-
-
-class PreTrainDataset(Dataset):
-    def __init__(self, root, datasets):
-        self.root = root
-
-        self.data = []
-        self.datasets = datasets.split("+")
-        for dataset in self.datasets:
-            with h5py.File(os.path.join(root, PATH[dataset]), 'r') as f:
-                for key in f.keys():
-                    data = torch.tensor(f[key]['features'][...].astype(np.float32))
-                    self.data.append(data)
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        features = self.data[idx]
-
-        return features
 
 
 class UserSummaries:
@@ -123,18 +99,11 @@ class UserSummaries:
         self.name = name
 
 
-def collate_fn_pretrain(batch):
-    features = batch
-    features = pad_sequence(features, batch_first=True, padding_value=1000)
-    return features
-
-
 def collate_fn_train(batch):
-    features, vid_reps, targets = zip(*batch)
+    features, targets = zip(*batch)
     features = pad_sequence(features, batch_first=True, padding_value=1000)
-    vid_reps = torch.stack(vid_reps, dim=0)
     targets = pad_sequence(targets, batch_first=True, padding_value=1000)
-    return features, vid_reps, targets
+    return features, targets
 
 
 def collate_fn_test(batch):

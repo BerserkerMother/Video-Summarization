@@ -1,6 +1,4 @@
-import logging
 import math
-from typing import List
 
 import torch
 from torch import nn, Tensor
@@ -9,8 +7,10 @@ import torch.nn.functional as F
 
 class SimNet(nn.Module):
 
-    def __init__(self, num_heads, d_model, num_layers, sparsity, use_cls, dropout,
-                 num_classes, use_pos, max_len=2500):
+    def __init__(self, num_heads: int = 8, d_model: int = 512,
+                 num_layers: int = 4, sparsity: float = 0.5,
+                 use_cls: bool = False, dropout: float = 0.2,
+                 num_classes: int = 1, use_pos: bool = True, max_len=2500):
         super(SimNet, self).__init__()
         self.num_heads = num_heads
         self.d_model = d_model
@@ -26,36 +26,20 @@ class SimNet(nn.Module):
             use_pos=use_pos, sparsity=sparsity, use_cls=use_cls)
 
         # importance embeddings
-        self.encoder_a = Encoder(num_heads, self.d_model, self.num_layers, dropout)
-        self.encoder_b = Encoder(num_heads, self.d_model, self.num_layers, dropout)
+        self.encoder = Encoder(num_heads, self.d_model, self.num_layers, dropout)
         self.final_layer = nn.Linear(self.d_model, num_classes)
 
-        # video space transformation
-        self.vid_transformation = nn.Linear(d_model, 512)
-
-    def forward(self, x, vid_rep=None, mask=None, vis_attention=False):
+    def forward(self, x, mask=None):
         bs, n, _ = x.size()
         x = self.embedding_layer(x)
 
-        mask_new = None
         # preprocess padding mask
         if isinstance(mask, Tensor):
-            mask_new = self.process_mask(mask)
+            mask = self.process_mask(mask)
         # save attention maps
-        features = self.encoder_a(x, mask_new)
-        out = self.encoder_b(features)
+        out = self.encoder(x, mask)
         out = self.final_layer(out)
-        scores = torch.sigmoid(out)
-
-        if isinstance(vid_rep, Tensor):
-            # calculate video loss
-            # mask padded tokens
-            scores_prime = scores.masked_fill(mask.unsqueeze(2), float("-inf")) * 100
-            avg_weights = F.softmax(scores_prime, dim=1).transpose(1, 2)
-            video_rep_a = torch.matmul(avg_weights, features)
-            video_rep_a = self.vid_transformation(video_rep_a).squeeze(1)
-            vid_loss = F.mse_loss(vid_rep, video_rep_a)
-            return scores.view(bs, -1), vid_loss
+        scores = torch.sigmoid(out).squeeze(2)
         return scores
 
     def process_mask(self, mask):
@@ -242,36 +226,3 @@ class PositionalEncoding(nn.Module):
     def forward(self, token_embedding: Tensor):
         return self.dropout(token_embedding
                             + self.pos_embedding[:, :token_embedding.size()[1]])
-
-
-# test for to see how good fully connected layers work
-class FullyConnected(nn.Module):
-    def __init__(self, dim_in: int, final_dim: int, hidden_layers: List,
-                 dropout_p: float):
-        super(FullyConnected, self).__init__()
-        # model info
-        self.dim_in = dim_in
-        self.final_dim = final_dim
-
-        # model layers
-        layers = [
-            nn.Linear(dim_in, hidden_layers[0]),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=dropout_p)
-        ]
-        for i in range(len(hidden_layers) - 1):
-            layer = nn.Linear(hidden_layers[i], hidden_layers[i + 1])
-            activation = nn.ReLU(inplace=True)
-            dropout = nn.Dropout(p=dropout_p)
-            layers += [layer, activation, dropout]
-        # last layer
-        layer = nn.Linear(hidden_layers[-1], final_dim)
-        activation = nn.ReLU(inplace=True)
-        dropout = nn.Dropout(p=dropout_p)
-        layers += [layer, activation, dropout]
-        # nn.Sequential
-        self.layers = nn.Sequential(*layers)
-
-    def forward(self, x):
-        x = self.layers(x)
-        return x

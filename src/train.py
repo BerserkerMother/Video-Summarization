@@ -41,10 +41,9 @@ def main(args, splits):
         # loads model.pth
         if os.path.exists("pretrain.pth"):
             if args.use_model:
-                state_dict = torch.load(args.use_model)
-                del state_dict["final_layer.weight"]
-                del state_dict["final_layer.bias"]
-                model.load_state_dict(state_dict, strict=False)
+                state_dict = torch.load("pretrain.pth")
+                model.load_state_dict(state_dict, strict=True)
+                logging.info("ATTENTION: loaded pretrained model")
 
         num_parameters = sum(p.numel()
                              for p in model.parameters() if p.requires_grad)
@@ -145,16 +144,15 @@ def main(args, splits):
 def train_step(model, optim, ft_train_loader, scaler, device):
     model.train()
     loss_avg = AverageMeter()
-    for i, (feature, vid_rep, target) in enumerate(ft_train_loader):
+    for i, (feature,  target) in enumerate(ft_train_loader):
         feature = feature.to(device)
-        vid_rep = vid_rep.to(device)
         target = target.to(device)
         # make padding mask, 1000 is padding value
         mask = (feature[:, :, 0] == 1000)
 
         with amp.autocast():
-            pred, vid_loss = model(feature, vid_rep, mask)
-            loss = mse_with_mask_loss(pred, target, mask) + vid_loss
+            pred = model(feature, mask)
+            loss = mse_with_mask_loss(pred, target, mask)
 
         optim.zero_grad()
         scaler.scale(loss).backward()
