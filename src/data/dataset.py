@@ -67,7 +67,6 @@ class TSDataset(Dataset):
 
                         if features.shape[0] > 50:
                             self.data.append(features)
-                            print(features.shape)
                             self.target.append(target)
 
     def __len__(self):
