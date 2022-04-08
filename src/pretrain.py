@@ -8,6 +8,7 @@ from torch.cuda import amp
 from model import PretrainModel
 from data import PreTrainDataset, collate_fn_pretrain
 from utils import AverageMeter
+from schedular import CosineSchedularLinearWarmup
 
 
 def main(args):
@@ -33,17 +34,19 @@ def main(args):
     logging.info('number of model parameter %dM' % num_el)
     optimizer = torch.optim.Adam(model.encoder.parameters(), lr=args.lr,
                                  weight_decay=args.weight_decay)
+    schedular = CosineSchedularLinearWarmup(optimizer, 75 // args.batch_size,
+                                            10, args.epochs, args.lr)
     scaler = amp.GradScaler()
 
     logging.info('Starting Pretraining')
     for epoch in range(args.epochs):
-        train_loss = train(model, optimizer, scaler, train_loader, epoch)
+        train_loss = train(model, optimizer, schedular, scaler, train_loader, epoch)
         logging.info("Total Loss %f" % train_loss)
         print('_' * 50)
         torch.save(model.encoder.state_dict(), "pretrain.pth")
 
 
-def train(model, optimizer, scaler, loader, e):
+def train(model, optimizer, schedular, scaler, loader, e):
     train_loss = AverageMeter()
     temp_loss = 0
     for i, (features, vid_rep) in enumerate(loader):
@@ -61,12 +64,14 @@ def train(model, optimizer, scaler, loader, e):
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
+        lr = schedular.step()
 
         # logging
         temp_loss += loss.item()
         if ((i + 1) % 2) == 0:
             train_loss.update(temp_loss, 1)
-            logging.info('Epoch %3d ,Step %d, loss: %f' % (e, i + 1, temp_loss))
+            logging.info('Epoch %3d ,Step %d, loss: %f, lr: %f' %
+                         (e, i + 1, temp_loss, lr))
             temp_loss = 0
     return train_loss.avg()
 
