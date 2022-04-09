@@ -29,11 +29,11 @@ class PretrainModel(nn.Module):
                               **kwargs)
 
     def cross_entropy_loss(self, x1, x2):
-        #x1 = F.softmax(x1, dim=1)
-        #x2 = F.softmax(x2, dim=1)
+        x1 = F.softmax(x1, dim=1)
+        x2 = F.softmax(x2, dim=1)
 
-        #loss = x2 * torch.log(x1)
-        loss = (x1 - x2) ** 2
+        loss = -x2 * torch.log(x1)
+        #loss = (x1 - x2) ** 2
         return loss.mean() 
 
     def forward(self, x, video_representation, mask=None,
@@ -49,7 +49,7 @@ class PretrainModel(nn.Module):
         # center and sharpen scores
         if isinstance(mask, Tensor):
             scores.masked_fill_(mask, 0.)
-        center_vec = scores - torch.mean(scores, dim=0, keepdim=True)
+        center_vec = scores# - torch.mean(scores, dim=0, keepdim=True)
         if isinstance(mask, Tensor):
             center_vec.masked_fill_(mask, float("-inf"))
         mixture_scores = F.softmax(center_vec / self.sharpening_t, dim=1)

@@ -35,7 +35,7 @@ def main(args):
     optimizer = torch.optim.Adam(model.encoder.parameters(), lr=args.lr,
                                  weight_decay=args.weight_decay)
     schedular = CosineSchedularLinearWarmup(optimizer, 75 // args.batch_size,
-                                            10, args.epochs, args.lr)
+                                            50, args.epochs, args.lr)
     scaler = amp.GradScaler()
 
     logging.info('Starting Pretraining')
@@ -43,7 +43,7 @@ def main(args):
         train_loss = train(model, optimizer, schedular, scaler, train_loader, epoch)
         logging.info("Total Loss %f" % train_loss)
         print('_' * 50)
-        torch.save(model.encoder.state_dict(), "pretrain.pth")
+        torch.save(model.encoder.state_dict(), "pretrain4.pth")
 
 
 def train(model, optimizer, schedular, scaler, loader, e):
@@ -64,7 +64,7 @@ def train(model, optimizer, schedular, scaler, loader, e):
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
-        lr = schedular.step()
+        lr = schedular.update()
 
         # logging
         temp_loss += loss.item()
