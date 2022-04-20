@@ -1,3 +1,5 @@
+import glob
+
 import torch
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
@@ -8,7 +10,7 @@ import h5py
 from .path import PATH
 
 
-class PreTrainDataset(Dataset):
+class PreTrainDatasetReady(Dataset):
     def __init__(self, root, datasets):
         self.root = root
 
@@ -28,6 +30,30 @@ class PreTrainDataset(Dataset):
 
     def __getitem__(self, idx):
         features, video_rep = self.data[idx]
+        video_rep = torch.tensor(video_rep)
+
+        return features, video_rep
+
+
+class PreTrainDataset(Dataset):
+    def __init__(self, root):
+        self.root = root
+
+        self.data = []
+        frame_paths = os.path.join(root, "frames")
+        for frame_path in glob.glob(frame_paths + "/*"):
+            video_name = os.path.basename(frame_path).split(".")[0]
+            data = np.load(frame_path)
+            video_rep = np.load("%s/%s.npy" %
+                                (os.path.join(root, "video"), video_name))
+            self.data.append((data, video_rep))
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        features, video_rep = self.data[idx]
+        features = torch.tensor(features)
         video_rep = torch.tensor(video_rep)
 
         return features, video_rep

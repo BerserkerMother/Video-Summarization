@@ -13,7 +13,7 @@ from schedular import CosineSchedularLinearWarmup
 
 def main(args):
     # data
-    dataset = PreTrainDataset(args.data, args.datasets)
+    dataset = PreTrainDataset(args.data)
     # make data loaders
     train_loader = DataLoader(
         dataset=dataset,
