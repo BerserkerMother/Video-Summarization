@@ -64,7 +64,7 @@ def train(model, optimizer, schedular, scaler, loader, e):
         scaler.scale(loss).backward()
         scaler.step(optimizer)
         scaler.update()
-        lr = schedular.step()
+        lr = schedular.update()
 
         # logging
         temp_loss += loss.item()
