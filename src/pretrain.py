@@ -34,7 +34,7 @@ def main(args):
     logging.info('number of model parameter %dM' % num_el)
     optimizer = torch.optim.Adam(model.encoder.parameters(), lr=args.lr,
                                  weight_decay=args.weight_decay)
-    schedular = CosineSchedularLinearWarmup(optimizer, 75 // args.batch_size,
+    schedular = CosineSchedularLinearWarmup(optimizer,  50,
                                             50, args.epochs, args.lr)
     scaler = amp.GradScaler()
 
@@ -43,7 +43,7 @@ def main(args):
         train_loss = train(model, optimizer, schedular, scaler, train_loader, epoch)
         logging.info("Total Loss %f" % train_loss)
         print('_' * 50)
-        torch.save(model.encoder.state_dict(), "pretrain4.pth")
+        torch.save(model.encoder.state_dict(), "pretrain5.pth")
 
 
 def train(model, optimizer, schedular, scaler, loader, e):
