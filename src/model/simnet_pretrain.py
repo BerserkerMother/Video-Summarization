@@ -52,11 +52,7 @@ class PretrainModel(nn.Module):
         # center and sharpen scores
         if isinstance(mask, Tensor):
             scores.masked_fill_(mask, 0.)
-<<<<<<< HEAD
-        center_vec = scores# - torch.mean(scores, dim=0, keepdim=True)
-=======
         center_loss = torch.norm(scores, dim=1).mean()
->>>>>>> origin/pretrain
         if isinstance(mask, Tensor):
             scores.masked_fill_(mask, float("-inf"))
         mixture_scores = F.softmax(scores / self.sharpening_t, dim=1)
