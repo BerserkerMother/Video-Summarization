@@ -25,7 +25,7 @@ def main(args):
     )
     logging.info("number of videos: %d" % len(dataset))
 
-    model = PretrainModel(num_heads=args.num_heads,
+    model = PretrainModel(num_heads=args.num_heads, feature_dim=args.d_model,
                           num_layers=args.num_layers, sparsity=args.sparsity,
                           dropout=args.dropout, num_classes=1,
                           use_pos=args.use_pos).cuda()
@@ -57,7 +57,10 @@ def train(model, optimizer, schedular, scaler, loader, e):
 
         with amp.autocast():
             # forward pass
-            loss = model(features, vid_rep, mask)
+            loss, center_loss = model(features, vid_rep, mask)
+            print(loss.item())
+            print(center_loss.item())
+            loss = loss + center_loss * 0.01
 
         # optimization step
         optimizer.zero_grad()
