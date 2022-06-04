@@ -136,7 +136,8 @@ def val_step(model, ft_test_loader, device):
         feature = feature.to(device)
         target = target.to(device)
 
-        pred, _ = model(feature).view(1, -1)
+        pred, _ = model(feature)
+        pred = pred.view(1, -1)
         loss = F.mse_loss(pred, target)
 
         loss_avg.update(loss.item(), 1)

@@ -1,1 +1,1 @@
-python src/train.py --data 'data' --datasets "tvsum" --ex_dataset 'tvsum' --batch_size 4 --num_heads 8 --d_model 512 --num_layers 4 --lr 1e-3 --weight_decay 1e-4 --max_epoch 100 --name "Pretrained Model#1" --use_model
+python src/train.py --data 'data' --datasets "tvsum" --ex_dataset 'tvsum' --batch_size 4 --num_heads 4 --d_model 256 --num_layers 4 --lr 1e-3 --weight_decay 1e-4 --max_epoch 100 --name "Pretrained Model#1" --use_model

@@ -43,7 +43,7 @@ def main(args):
         train_loss = train(model, optimizer, schedular, scaler, train_loader, epoch)
         logging.info("Total Loss %f" % train_loss)
         print('_' * 50)
-        torch.save(model.encoder.state_dict(), "pretrain5.pth")
+        torch.save(model.encoder.state_dict(), "pretrain.pth")
 
 
 def train(model, optimizer, schedular, scaler, loader, e):
@@ -58,7 +58,7 @@ def train(model, optimizer, schedular, scaler, loader, e):
         with amp.autocast():
             # forward pass
             loss, center_loss = model(features, vid_rep, mask)
-            loss = loss + center_loss * 0.01
+            loss = loss + center_loss * 0.3
 
         # optimization step
         optimizer.zero_grad()

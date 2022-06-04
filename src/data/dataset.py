@@ -50,6 +50,15 @@ class PreTrainDataset(Dataset):
                                 (os.path.join(root, "video"), video_name))
             self.data.append((data, video_rep))
 
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        feature, vid_rep = self.data[idx]
+        feature = torch.tensor(feature)
+        vid_rep = torch.tensor(vid_rep)
+        return feature, vid_rep
+
 
 # Dataset Implementation for DS-net TVsum & SumMe
 class TSDataset(Dataset):
