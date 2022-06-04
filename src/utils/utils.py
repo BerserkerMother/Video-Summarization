@@ -1,7 +1,9 @@
-import torch
-
+import yaml
+import json
 import random
 import numpy as np
+
+import torch
 
 
 def set_seed(seed: int):
@@ -21,3 +23,33 @@ class AverageMeter:
 
     def avg(self):
         return self.val / self.num
+
+
+def load_yaml(path):
+    with open(path, 'r') as f:
+        try:
+            splits = yaml.safe_load(f)
+        except yaml.YAMLError as e:
+            print(e)
+
+    return splits
+
+
+def load_json(path):
+    with open(path) as f:
+        splits = json.load(f)
+
+    return splits
+
+
+def mse_with_mask_loss(output, targets, mask, reduction="avg"):
+    scale = torch.ones_like(output)
+    scale[mask] = 0.0
+
+    output = output * scale
+    targets = targets * scale
+    loss = (output - targets) ** 2
+
+    if reduction == "avg":
+        return loss.mean()
+    return loss.sum()

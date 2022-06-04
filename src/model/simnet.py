@@ -1,4 +1,3 @@
-import logging
 import math
 
 import torch
@@ -26,10 +25,11 @@ class SimNet(nn.Module):
             in_features=self.in_features, d_model=self.d_model,
             use_pos=use_pos, sparsity=sparsity, use_cls=use_cls)
 
+        # importance embeddings
         self.encoder = Encoder(num_heads, self.d_model, self.num_layers, dropout)
         self.final_layer = nn.Linear(self.d_model, num_classes)
 
-    def forward(self, x, mask=None, vis_attention=False):
+    def forward(self, x, mask=None, vis_attention=None):
         bs, n, _ = x.size()
         x = self.embedding_layer(x)
 
@@ -48,6 +48,10 @@ class SimNet(nn.Module):
             return final_out, out
 
     def process_mask(self, mask):
+        if self.use_cls:
+            cls_mask = torch.tensor([[False]], device=torch.device("cuda"))
+            cls_mask = cls_mask.expand(mask.size()[0], 1)
+            mask = torch.cat([cls_mask, mask], dim=1)
         batch_size, N = mask.size()
         mask = mask.view(batch_size, 1, 1, N)
         mask = mask.expand(batch_size, self.num_heads, N, N)
