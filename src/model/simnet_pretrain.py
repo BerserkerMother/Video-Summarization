@@ -35,11 +35,17 @@ class PretrainModel(nn.Module):
         x2 = F.softmax(x2, dim=1)
 
         loss = -x2 * torch.log(x1)
-        #loss = (x1 - x2) ** 2
-        return loss.mean() 
+        # loss = 0.5 * ((x1 - x2) ** 2)
+        return loss.mean()
+
+    def entropy(self, x, mask=None):
+        x = -(x * torch.log(x))
+        if isinstance(mask, Tensor):
+            x = x.masked_fill(mask, 0.)
+        return x.mean(dim=1).mean()
 
     def forward(self, x, video_representation, mask=None,
-                visualize_attention=None):
+                visualize_attention=None, pen_met="entropy"):
 
         if visualize_attention:
             out, attention = self.encoder(x, mask, visualize_attention)
@@ -49,13 +55,17 @@ class PretrainModel(nn.Module):
         frame_features = self.video_transform(frame_features)
 
         mask = mask.unsqueeze(2)
-        # center and sharpen scores
+        # gets aggregated weights
         if isinstance(mask, Tensor):
-            scores.masked_fill_(mask, 0.)
-        center_loss = torch.norm(scores, dim=1).mean()
-        if isinstance(mask, Tensor):
-            scores.masked_fill_(mask, float("-inf"))
+            scores = scores.masked_fill(mask, float("-inf"))
         mixture_scores = F.softmax(scores / self.sharpening_t, dim=1)
+        # centering loss
+        if pen_met == "entropy":
+            # adds 1e-9 for numerical stability
+            center_loss = self.entropy(mixture_scores + 1e-9, mask)
+            print(center_loss)
+        else:
+            center_loss = torch.norm(mixture_scores, dim=1).mean()
         mixture_scores = mixture_scores.transpose(1, 2)
         video_representation_encoder = torch.matmul(mixture_scores,
                                                     frame_features)

@@ -34,7 +34,7 @@ def main(args):
     logging.info('number of model parameter %dM' % num_el)
     optimizer = torch.optim.Adam(model.encoder.parameters(), lr=args.lr,
                                  weight_decay=args.weight_decay)
-    schedular = CosineSchedularLinearWarmup(optimizer,  13000 // args.batch_size,
+    schedular = CosineSchedularLinearWarmup(optimizer, 13000 // args.batch_size,
                                             50, args.epochs, args.lr)
     scaler = amp.GradScaler()
 
@@ -54,7 +54,6 @@ def train(model, optimizer, schedular, scaler, loader, e):
         vid_rep = vid_rep.cuda()
         # make padding mask, 1000 is padding value
         mask = (features[:, :, 0] == 1000)
-
         with amp.autocast():
             # forward pass
             loss, center_loss = model(features, vid_rep, mask)
