@@ -63,7 +63,6 @@ class PretrainModel(nn.Module):
         if pen_met == "entropy":
             # adds 1e-9 for numerical stability
             center_loss = self.entropy(mixture_scores + 1e-9, mask)
-            print(center_loss)
         else:
             center_loss = torch.norm(mixture_scores, dim=1).mean()
         mixture_scores = mixture_scores.transpose(1, 2)

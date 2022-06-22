@@ -48,7 +48,9 @@ def main(args):
 
 def train(model, optimizer, schedular, scaler, loader, e):
     train_loss = AverageMeter()
-    temp_loss = 0
+    temp_loss = 0.
+    center_temp = 0.
+    main_temp = 0.
     for i, (features, vid_rep) in enumerate(loader):
         features = features.cuda()
         vid_rep = vid_rep.cuda()
@@ -56,8 +58,8 @@ def train(model, optimizer, schedular, scaler, loader, e):
         mask = (features[:, :, 0] == 1000)
         with amp.autocast():
             # forward pass
-            loss, center_loss = model(features, vid_rep, mask)
-            loss = loss + center_loss * 0.3
+            main_loss, center_loss = model(features, vid_rep, mask)
+            loss = main_loss + center_loss * 0.5
 
         # optimization step
         optimizer.zero_grad()
@@ -68,11 +70,17 @@ def train(model, optimizer, schedular, scaler, loader, e):
 
         # logging
         temp_loss += loss.item()
+        center_temp += center_loss
+        main_temp += main_loss
         if ((i + 1) % 2) == 0:
             train_loss.update(temp_loss, 1)
             logging.info('Epoch %3d ,Step %d, loss: %f, lr: %f' %
                          (e, i + 1, temp_loss, lr))
-            temp_loss = 0
+            logging.info("Distillation Loss: %2.5f, Centering Loss: %2.5f" %
+                         (main_temp, center_temp))
+            temp_loss = 0.
+            center_temp = 0.
+            main_temp = 0
     return train_loss.avg()
 
 
