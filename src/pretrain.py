@@ -70,9 +70,9 @@ def train(model, optimizer, schedular, scaler, loader, e):
 
         # logging
         temp_loss += loss.item()
-        center_temp += center_loss
-        main_temp += main_loss
-        if ((i + 1) % 2) == 0:
+        center_temp += center_loss.item()
+        main_temp += main_loss.item()
+        if ((i + 1) % 4) == 0:
             train_loss.update(temp_loss, 1)
             logging.info('Epoch %3d ,Step %d, loss: %f, lr: %f' %
                          (e, i + 1, temp_loss, lr))

@@ -3,6 +3,7 @@ import argparse
 import wandb
 import logging
 import os
+import math
 
 import torch
 import torch.nn.functional as F
@@ -24,7 +25,7 @@ def main(args, splits):
     avg_spr = AverageMeter()
     for split_idx, split in enumerate(splits):
         logging.info(f"\nSplit {split_idx + 1}")
-
+        set_seed(1234)
         # define model
         model = SimNet(num_heads=args.num_heads, d_model=args.d_model,
                        num_layers=args.num_layers, sparsity=0.,
@@ -81,8 +82,9 @@ def main(args, splits):
             val_loss, f_score, ktau, spr = val_step(
                 model, val_loader, device)
             fs_list.append(f_score)
-            kt_list.append(ktau)
-            sp_list.append(spr)
+            if not math.isnan(ktau) and not math.isnan(spr):
+                kt_list.append(ktau)
+                sp_list.append(spr)
 
             logging.info(
                 f"Epoch {e} : [Train loss {train_loss:.4f}, Val loss {val_loss:.4f}, Epoch time {e_end - e_start:.4f}]")
