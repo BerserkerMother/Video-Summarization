@@ -29,7 +29,8 @@ class SimNet(nn.Module):
         self.encoder = Encoder(num_heads, self.d_model, self.num_layers, dropout)
         self.final_layer = nn.Linear(self.d_model, num_classes)
 
-    def forward(self, x, mask=None, vis_attention=None):
+    def forward(self, x, mask=None, vis_attention=None,
+                module_score=False):
         bs, n, _ = x.size()
         x = self.embedding_layer(x)
 
@@ -37,15 +38,11 @@ class SimNet(nn.Module):
         if isinstance(mask, Tensor):
             mask = self.process_mask(mask)
         # save attention maps
-        attention_maps = []
-        if vis_attention:
-            out = self.encoder(x, mask, attention_maps)
-            final_out = self.final_layer(out)
-            return (final_out, out), attention_maps
-        else:
-            out = self.encoder(x, mask)
-            final_out = self.final_layer(out)
-            return final_out, out
+        out, intermediate = self.encoder(x, mask)
+        final_out = self.final_layer(out)
+        if module_score:
+            return final_out, intermediate
+        return final_out, out
 
     def process_mask(self, mask):
         if self.use_cls:
@@ -71,11 +68,19 @@ class Encoder(nn.Module):
             modules.append(
                 EncoderBlock(num_heads=self.num_heads, d_model=self.d_model, drop_rate=dropout))
         self.module_list = nn.ModuleList(modules)
+        modules_score = []
+        for _ in range(2):
+            modules.append(
+                EncoderBlock(num_heads=self.num_heads, d_model=self.d_model, drop_rate=dropout))
+        self.module_score = nn.ModuleList(modules_score)
 
     def forward(self, x: Tensor, mask=None, attention_maps=None):
         for block in self.module_list:
             x = block(x, mask, attention_maps)
-        return x
+        x1 = x
+        for block in self.module_score:
+            x1 = block(x1, mask, attention_maps)
+        return x1, x
 
 
 class EncoderBlock(nn.Module):
