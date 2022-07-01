@@ -15,6 +15,7 @@ from model import SimNet
 from utils import set_seed, AverageMeter, load_json, load_yaml, mse_with_mask_loss
 from evaluation.compute_metrics import eval_metrics
 from data import TSDataset, collate_fn_train, collate_fn_test
+from generate_summary_image import generate_video_summary_json
 
 
 def main(args, splits):
@@ -73,6 +74,8 @@ def main(args, splits):
 
         ft_time_start = time.time()
         model = model.to(device)
+        model.load_state_dict(torch.load("model_mae.pth"))
+        generate_video_summary_json(model, val_loader)
 
         fs_list, kt_list, sp_list = [], [], []
         for e in range(args.max_epoch):
@@ -109,7 +112,7 @@ def main(args, splits):
 def train_step(model, optim, ft_train_loader, scaler, device):
     model.train()
     loss_avg = AverageMeter()
-    for i, (feature,  target) in enumerate(ft_train_loader):
+    for i, (feature, target) in enumerate(ft_train_loader):
         feature = feature.to(device)
         target = target.to(device)
         # make padding mask, 1000 is padding value
@@ -139,7 +142,7 @@ def val_step(model, ft_test_loader, device):
         target = target.to(device)
 
         pred, _ = model(feature)
-        pred = pred.view(1, -1)
+        pred = torch.sigmoid(pred.view(1, -1))
         loss = F.mse_loss(pred, target)
 
         loss_avg.update(loss.item(), 1)

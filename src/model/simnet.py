@@ -30,7 +30,7 @@ class SimNet(nn.Module):
         self.final_layer = nn.Linear(self.d_model, num_classes)
 
     def forward(self, x, mask=None, vis_attention=None,
-                module_score=False):
+                model_score=False):
         bs, n, _ = x.size()
         x = self.embedding_layer(x)
 
@@ -40,7 +40,7 @@ class SimNet(nn.Module):
         # save attention maps
         out, intermediate = self.encoder(x, mask)
         final_out = self.final_layer(out)
-        if module_score:
+        if model_score:
             return final_out, intermediate
         return final_out, out
 
