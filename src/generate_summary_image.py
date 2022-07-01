@@ -15,19 +15,16 @@ import json
 import glob
 from PIL import Image
 
-from evaluation.generate_summary import generate_summary
+from evaluation.generate_summary import generate_summary as gm
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def all_in_one(model: nn.Module,
-               data_loader: data.DataLoader,
-               video_dataset_path: str):
+def generate_video_frames(video_dataset_path: str):
     """
-    generate down sample video frames as png and saves summary frames as json
+    generate down sample video frames as png
 
-    :param model: model to gte results from
-    :param data_loader: data loader to use
+
     :param video_dataset_path: path to the folder containing dataset videos
     """
 
@@ -38,13 +35,23 @@ def all_in_one(model: nn.Module,
     for path in videos_path:
         reduce_fps_and_save(path, fps=2)
 
-    logging.info("generatign summaries and saving them as json")
+
+def generate_video_summary_json(model: nn.Module, data_loader: data.DataLoader):
+    """
+    saves summary frames as json
+
+    :param model: model to gte results from
+    :param data_loader: data loader to use
+    """
     summaries = get_summary(model, data_loader)
     # save as json
     with open("summary.json", 'w') as file:
         json.dump(summaries, file, indent=8)
 
+    logging.info("generating summaries and saving them as json")
 
+
+@torch.no_grad()
 def get_summary(model: nn.Module, data_loader: data.DataLoader) -> Dict:
     """
     takes a model and dataset, outputs generated summaries
@@ -58,14 +65,19 @@ def get_summary(model: nn.Module, data_loader: data.DataLoader) -> Dict:
         feature = feature.to(device)
 
         pred, _ = model(feature)
-        pred = pred.view(1, -1)
+        pred = torch.sigmoid(pred.view(1, -1))
 
         score_dict[user.name] = pred.squeeze(0).detach().cpu().numpy()
         user_dict[user.name] = user
     summaries = generate_summary(score_dict, user_dict)
     names = [("video_%d" % i) for i in range(len(summaries))]
+    result = {}
 
-    return dict(zip(names, summaries))
+    for (name, summary) in zip(names, summaries):
+        new_summary = [i for i, is_in in enumerate(summary) if is_in == 1]
+        result[name] = new_summary
+
+    return result
 
 
 PATH = {
@@ -103,7 +115,7 @@ def generate_summary(predicted_dict, user_dict):
         all_nframes.append(n_frames)
         all_positions.append(positions)
 
-    all_summaries = generate_summary(
+    all_summaries = gm(
         all_shot_bound, all_scores, all_nframes, all_positions)
     return all_summaries
 
@@ -121,7 +133,9 @@ def reduce_fps_and_save(video_path: str, fps: int = 2):
     :rtype: tuple
     """
 
-    video_name = video_path.split("/")[-1].split(".")[0]
+    if not os.path.exists('movies'):
+        os.mkdir("movies")
+    video_name = "movies/" + video_path.split("/")[-1].split(".")[0]
     if not os.path.exists(video_name):
         os.mkdir(video_name)
     # dead video file
@@ -142,8 +156,13 @@ def reduce_fps_and_save(video_path: str, fps: int = 2):
         cap.grab()
         if current_frame_index % step_size == 0:
             ret, frame_array = cap.retrieve()
-            image = Image.fromarray(frame_array.astype(np.uint8))
-            image.save("%s/%d.png" % (video_name, i))
+            arr = np.empty_like(frame_array)
+            arr[:, :, 0] = frame_array[:, :, 2]
+            arr[:, :, 1] = frame_array[:, :, 1]
+            arr[:, :, 2] = frame_array[:, :, 0]
+            image = Image.fromarray(arr)
+            image.save("%s/%d.jpg" % (video_name, i))
             i += 1
         current_frame_index += 1
-    # stores indices of selected frames
+
+# generate_video_frames("/home/kave/Downloads/VS datasets/tvsum50_ver_1_1/ydata-tvsum50-v1_1/ydata-tvsum50-video/video")
