@@ -46,7 +46,7 @@ class PretrainModel(nn.Module):
             x = x.masked_fill(mask, 0.)
         return x.mean(dim=1).mean()
 
-    def repelling_loss(self, x: Tensor):
+    def repelling_loss(self, x: Tensor, mask: Tensor):
         """
         takes input x(batch_size, n_frames, dim)
 
@@ -54,9 +54,11 @@ class PretrainModel(nn.Module):
         containing the average cosine similarity between frames
         """
         batch_size, n_frames, _ = x.size()
+        if isinstance(mask, Tensor):
+            x = x * (mask == False).unsqueeze(2)
 
         # normalize x
-        x = x / x.norm(dim=2, keepdim=True)
+        x = x / (x.norm(dim=2, keepdim=True) + 1e-9)
         sim_tensor = torch.matmul(x, x.transpose(1, 2))
         # zero out the main diagonal
         zero_eye = (torch.eye(n_frames, device=device) == 0) \
@@ -77,7 +79,7 @@ class PretrainModel(nn.Module):
         frame_features = self.video_transform(frame_features)
 
         # repel loss
-        repel_loss = self.repelling_loss(frame_features)
+        repel_loss = self.repelling_loss(frame_features, mask)
 
         mask = mask.unsqueeze(2)
         # gets aggregated weights

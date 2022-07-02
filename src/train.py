@@ -46,7 +46,6 @@ def main(args, splits):
         num_parameters = sum(p.numel()
                              for p in model.parameters() if p.requires_grad)
         logging.info('model has %d parameters' % num_parameters)
-        wandb.config.num_el = num_parameters
 
         train_split = split['train_keys']
         test_split = split['test_keys']
