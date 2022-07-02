@@ -58,8 +58,9 @@ def train(model, optimizer, schedular, scaler, loader, e):
         mask = (features[:, :, 0] == 1000)
         with amp.autocast():
             # forward pass
-            main_loss, center_loss = model(features, vid_rep, mask)
-            loss = main_loss + center_loss * 0.5
+            main_loss, center_loss, repel_loss \
+                = model(features, vid_rep, mask)
+            loss = main_loss + center_loss * 0.5 + 1. * repel_loss
 
         # optimization step
         optimizer.zero_grad()
@@ -76,8 +77,9 @@ def train(model, optimizer, schedular, scaler, loader, e):
             train_loss.update(temp_loss, 1)
             logging.info('Epoch %3d ,Step %d, loss: %f, lr: %f' %
                          (e, i + 1, temp_loss, lr))
-            logging.info("Distillation Loss: %2.5f, Centering Loss: %2.5f" %
-                         (main_temp, center_temp))
+            logging.info("Distillation Loss: %2.5f, Centering Loss: %2.5f"
+                         ", Repel Loss: %2.5f" %
+                         (main_temp, center_temp, repel_loss))
             temp_loss = 0.
             center_temp = 0.
             main_temp = 0

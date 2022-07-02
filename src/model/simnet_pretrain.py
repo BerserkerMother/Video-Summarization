@@ -6,6 +6,8 @@ from torch import Tensor
 
 from .simnet import SimNet
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class PretrainModel(nn.Module):
     """
@@ -39,10 +41,30 @@ class PretrainModel(nn.Module):
         return loss.mean()
 
     def entropy(self, x, mask=None):
-        x = -(x * torch.log(x))
+        x = (x * torch.log(x))
         if isinstance(mask, Tensor):
             x = x.masked_fill(mask, 0.)
         return x.mean(dim=1).mean()
+
+    def repelling_loss(self, x: Tensor):
+        """
+        takes input x(batch_size, n_frames, dim)
+
+        :return: returns a loss tensor with one item
+        containing the average cosine similarity between frames
+        """
+        batch_size, n_frames, _ = x.size()
+
+        # normalize x
+        x = x / x.norm(dim=2, keepdim=True)
+        sim_tensor = torch.matmul(x, x.transpose(1, 2))
+        # zero out the main diagonal
+        zero_eye = (torch.eye(n_frames, device=device) == 0) \
+            .type(torch.float).unsqueeze(0)
+        sim_tensor = sim_tensor * zero_eye
+        sim_loss = sim_tensor.mean(dim=1).mean()
+
+        return sim_loss
 
     def forward(self, x, video_representation, mask=None,
                 visualize_attention=None, pen_met="entropy"):
@@ -50,9 +72,12 @@ class PretrainModel(nn.Module):
         if visualize_attention:
             out, attention = self.encoder(x, mask, visualize_attention)
         else:
-            out = self.encoder(x, mask)
+            out = self.encoder(x, mask, model_score=True)
         scores, frame_features = out
         frame_features = self.video_transform(frame_features)
+
+        # repel loss
+        repel_loss = self.repelling_loss(frame_features)
 
         mask = mask.unsqueeze(2)
         # gets aggregated weights
@@ -70,4 +95,4 @@ class PretrainModel(nn.Module):
                                                     frame_features)
         loss = self.cross_entropy_loss(video_representation_encoder.squeeze(1),
                                        video_representation)
-        return loss, center_loss
+        return loss, center_loss, repel_loss
