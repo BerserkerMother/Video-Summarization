@@ -43,7 +43,11 @@ def reduce_fps(video_path: str, fps: int = 2) -> Tuple:
         cap.grab()
         if current_frame_index % step_size == 0:
             ret, frame_array = cap.retrieve()
-            final_video[i] = frame_array.astype(np.uint8)
+            arr = np.empty_like(frame_array)
+            arr[:, :, 0] = frame_array[:, :, 2]
+            arr[:, :, 1] = frame_array[:, :, 1]
+            arr[:, :, 2] = frame_array[:, :, 0]
+            final_video[i] = arr.astype(np.uint8)
             frame_indices.append(current_frame_index)
             i += 1
         current_frame_index += 1

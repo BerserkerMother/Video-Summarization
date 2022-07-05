@@ -179,4 +179,4 @@ def process_features(video_path, temp, fps: int = 2):
             yield video_name, indices, n_steps, segments
 
 # create_summe_dataset("/home/kave/Downloads/VS datasets/SumMe", fps=2)
-create_tvsum_dataset("/home/kave/Downloads/VS datasets/tvsum50_ver_1_1/ydata-tvsum50-v1_1/")
+create_tvsum_dataset("/home/kave/Downloads/VS datasets/tvsum50_ver_1_1/ydata-tvsum50-v1_1/", fps=2)
